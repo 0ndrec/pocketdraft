@@ -1,0 +1,19 @@
+Pocketdraft turns a STEP model into a dimensioned engineering drawing and lets you finish it on the phone. Everything is computed on the device: no account, no server, no network permission.
+
+<b>What it does</b>
+<ul>
+<li>Opens STEP files (.step, .stp), also from other apps with "Open with"; an assembly can be drawn whole or part by part</li>
+<li>Lays out the views, dimensions and title block automatically, and lists what is still wrong with the drawing</li>
+<li>Offers ready fixes for the problems it finds</li>
+<li>Tap a dimension to set its tolerance or fit, or to remove it; removed dimensions can be put back</li>
+<li>Tap a face of the part to make it a datum; choose where dimensions are measured from</li>
+<li>Edits the title block, with default values for new drawings</li>
+<li>Chooses the paper automatically or keeps the size you pick</li>
+<li>Saves the drawing as a PDF</li>
+<li>Keeps a library of your drawings with their edits</li>
+</ul>
+
+<b>The drawing core</b>
+The drawings are made by the draftwright core (https://github.com/pzfreo/draftwright-rust, AGPL-3.0), used unmodified. Pocketdraft is an independent app built on it and is not affiliated with its author.
+
+Large models take time: a part with a few hundred faces opens in tens of seconds, and an edit takes a few seconds.

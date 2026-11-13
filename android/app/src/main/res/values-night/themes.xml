@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window before Compose draws its first frame: day or night, and the system
+         palette on Android 12+. The Compose theme takes over after. -->
+    <style name="Theme.Draftwright" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF141218</item>
+    </style>
+</resources>

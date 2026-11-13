@@ -1,0 +1,9 @@
+# Line endings: LF in the repository and on checkout everywhere, so the shell scripts run on
+# Linux and macOS; CRLF only for Windows batch files.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jar binary
+*.step binary
+*.STEP binary
+*.stp binary

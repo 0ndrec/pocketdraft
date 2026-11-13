@@ -1,0 +1,35 @@
+# The build recipe for F-Droid: goes to fdroiddata as metadata/app.pocketdraft.yml.
+# Before sending: tag the release v0.1.0 in the repository and put that tag's commit hash in
+# `commit`. Then `fdroid lint` and `fdroid rewritemeta` in a fdroiddata fork.
+Categories:
+  - Science & Education
+License: AGPL-3.0-only
+AuthorName: 0ndrec
+SourceCode: https://github.com/0ndrec/pocketdraft
+IssueTracker: https://github.com/0ndrec/pocketdraft/issues
+
+AutoName: Pocketdraft
+
+RepoType: git
+Repo: https://github.com/0ndrec/pocketdraft.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: <the commit of tag v0.1.0>
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y rustup gcc libc-dev
+    gradle:
+      - yes
+    prebuild:
+      - rustup default 1.99.1
+      - rustup target add aarch64-linux-android
+      - cargo install cargo-ndk@4.1.2 --locked
+    ndk: 27.1.12297006
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[\d.]+$
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

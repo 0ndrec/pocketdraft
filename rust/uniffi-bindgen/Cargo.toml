@@ -1,0 +1,12 @@
+# The bindings generator, as a separate host tool: it reads the interface from the built
+# Android library and writes Kotlin (`generate --library … --language kotlin`).
+[package]
+name = "uniffi-bindgen"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+uniffi = { version = "=0.32.2", features = ["cli"] }
+
+[workspace]

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pocketdraft's own icon: a sheet with a part on it and a dimension under the part. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M36,26h36a4,4 0,0 1,4 4v48a4,4 0,0 1,-4 4h-36a4,4 0,0 1,-4 -4v-48a4,4 0,0 1,4 -4z" />
+    <path android:strokeColor="#1F3A93" android:strokeWidth="3" android:pathData="M41,36h26v22h-26z" />
+    <path android:strokeColor="#1F3A93" android:strokeWidth="2.5" android:pathData="M54,47m-4.5,0a4.5,4.5 0,1 1,9 0a4.5,4.5 0,1 1,-9 0" />
+    <path android:strokeColor="#1F3A93" android:strokeWidth="2" android:pathData="M41,70h26M41,65v10M67,65v10" />
+</vector>

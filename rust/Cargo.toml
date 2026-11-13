@@ -1,0 +1,46 @@
+# draftwright for Android without Whisker: the drawing core as a native library with
+# UniFFI bindings (Kotlin), built with cargo-ndk. See ../README.md.
+[package]
+name = "draftwright-ffi"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "draftwright_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+uniffi = "=0.32.2"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2 = "1"
+sha2 = "0.10"
+# The drawing core, as in the Whisker app (clap off).
+draftwright = { git = "https://github.com/pzfreo/draftwright-rust", tag = "v0.2.15", default-features = false }
+draftwright-wasm = { git = "https://github.com/pzfreo/draftwright-rust", tag = "v0.2.15" }
+
+# An allocator other than the system's, to measure against Android's own (docs/performance.md).
+mimalloc = { version = "0.1", default-features = false, optional = true }
+
+[features]
+mimalloc = ["dep:mimalloc"]
+
+[profile.release]
+# Fast enough to build often; the geometry kernel needs full optimisation.
+opt-level = 3
+debug = false
+# Symbols stay: UniFFI reads the interface from them; the copy packaged is stripped (build.sh).
+strip = false
+codegen-units = 16
+lto = false
+
+# The geometry kernel is slow unoptimised: tests and host tools optimise dependencies.
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
+
+[workspace]
+exclude = ["uniffi-bindgen"]

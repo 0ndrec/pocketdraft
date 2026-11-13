@@ -1,0 +1,405 @@
+package app.pocketdraft.ui
+
+import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.outlined.Anchor
+import androidx.compose.material.icons.outlined.AspectRatio
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.BottomAppBarDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import app.pocketdraft.AppViewModel
+import org.json.JSONObject
+import uniffi.draftwright_ffi.Doc
+import uniffi.draftwright_ffi.viewerHtml
+import uniffi.draftwright_ffi.viewerShow
+
+private const val TITLE = "title:"
+
+/** A tapped side of the part (`side:bottom`): an edge in a view, or its datum symbol. */
+private const val SIDE = "side:"
+
+/**
+ * The open drawing. Material 3 layout for a canvas screen:
+ * - top app bar: back, the name, undo, and a menu (datums and origins, hidden lines, removed
+ *   dimensions);
+ * - the sheet in a WebView, with a sheet switcher floating over it when there are several;
+ * - bottom app bar: the drawing's tools as icons, and Save PDF as the screen's main action.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DrawingScreen(vm: AppViewModel) {
+    val doc = vm.doc
+    val context = LocalContext.current
+    var painting by remember { mutableStateOf(false) }
+    val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        uri?.let { vm.savePdf(context.contentResolver, it) }
+    }
+    BackHandler(enabled = doc != null) {
+        when {
+            vm.selected != null -> vm.selected = null
+            vm.showProblems -> vm.showProblems = false
+            else -> vm.close()
+        }
+    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = vm::close) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                },
+                title = {
+                    Column {
+                        Text(doc?.name ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            doc?.let { "${it.faces} faces · ${it.features} features" } ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                actions = {
+                    Tool("Undo") {
+                        IconButton(onClick = vm::undo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
+                    }
+                    More(vm)
+                },
+            )
+        },
+        bottomBar = {
+            Tools(vm, onSavePdf = {
+                val name = (doc?.name ?: "drawing").substringBefore(" · ").substringBeforeLast('.')
+                savePdf.launch("$name.pdf")
+            })
+        },
+    ) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                if (vm.busy != null || painting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                Viewer(vm, onPainting = { painting = it })
+                if (doc != null && doc.sheets.size > 1) {
+                    SheetSwitcher(vm, doc, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+                }
+            }
+        }
+    }
+    if (doc != null && vm.showProblems) ProblemsSheet(vm, doc)
+    if (doc != null && vm.showDatums) DatumSheet(vm, doc)
+    if (doc != null && vm.showRemoved && doc.removed.isNotEmpty()) RemovedSheet(vm, doc)
+    val selected = vm.selected
+    if (doc != null && selected != null) {
+        if (selected.startsWith(TITLE)) {
+            TitleSheet(vm, doc, selected.removePrefix(TITLE))
+        } else if (selected.startsWith(SIDE)) {
+            SideSheet(vm, doc, selected.removePrefix(SIDE).substringBefore('@'))
+        } else {
+            doc.items.firstOrNull { it.id == selected }?.let { ItemSheet(vm, it) }
+        }
+    }
+}
+
+/**
+ * The top bar's overflow menu: the drawing's settings and what is used less often. The tools
+ * of every session (problems, paper, title block, PDF, undo) stay on the bars.
+ */
+@Composable
+private fun More(vm: AppViewModel) {
+    val doc = vm.doc
+    val removed = doc?.removed?.size ?: 0
+    val hidden = doc?.hidden ?: true
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(enabled = doc != null, onClick = { open = true }) { Icon(Icons.Filled.MoreVert, "More") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Datums and origins") },
+                leadingIcon = { Icon(Icons.Outlined.Anchor, null) },
+                onClick = { open = false; vm.selected = null; vm.showDatums = true },
+            )
+            DropdownMenuItem(
+                text = { Text("Hidden lines") },
+                leadingIcon = {
+                    Icon(if (hidden) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, null)
+                },
+                onClick = { open = false; vm.hidden(!hidden) },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(if (removed > 0) "Removed dimensions · $removed" else "No removed dimensions") },
+                leadingIcon = { Icon(Icons.Outlined.RestoreFromTrash, null) },
+                enabled = removed > 0,
+                onClick = { open = false; vm.selected = null; vm.showRemoved = true },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Settings") },
+                leadingIcon = { Icon(Icons.Outlined.Settings, null) },
+                onClick = { open = false; vm.selected = null; vm.showSettings = true },
+            )
+        }
+    }
+}
+
+/** A long press on an icon-only control names it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Tool(label: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
+}
+
+/**
+ * The bottom app bar: problems (with their count), paper size, the title block,
+ * and Save PDF as the floating action button. It stays while no drawing is open (the library
+ * covers it), so the sheet above never changes size.
+ */
+@Composable
+private fun Tools(vm: AppViewModel, onSavePdf: () -> Unit) {
+    val doc = vm.doc
+    val open = doc != null
+    BottomAppBar(
+        actions = {
+            Tool("Problems") {
+                IconButton(enabled = open, onClick = { vm.selected = null; vm.showProblems = true }) {
+                    val total = doc?.problemTotal?.toInt() ?: 0
+                    BadgedBox(badge = { if (total > 0) Badge { Text(if (total > 99) "99+" else "$total") } }) {
+                        Icon(Icons.Outlined.ReportProblem, "Problems")
+                    }
+                }
+            }
+            SizeTool(vm)
+            Tool("Title block") {
+                IconButton(enabled = open, onClick = { vm.showProblems = false; vm.selected = TITLE + "title" }) {
+                    Icon(Icons.Outlined.EditNote, "Title block")
+                }
+            }
+        },
+        floatingActionButton = {
+            Tool("Save PDF") {
+                FloatingActionButton(
+                    onClick = { if (open) onSavePdf() },
+                    containerColor = BottomAppBarDefaults.bottomAppBarFabColor,
+                    elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation(),
+                ) { Icon(Icons.Filled.PictureAsPdf, "Save PDF") }
+            }
+        },
+    )
+}
+
+/** Paper sizes, in a menu over the bar; how a paper is kept is in Settings. */
+@Composable
+private fun SizeTool(vm: AppViewModel) {
+    val doc = vm.doc
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Tool("Paper size") {
+            IconButton(enabled = doc != null, onClick = { open = true }) {
+                // A padlock on the icon while the drawing keeps its paper and scale.
+                BadgedBox(badge = {
+                    if (doc?.kept == true) {
+                        Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                            Icon(Icons.Filled.Lock, null, Modifier.size(10.dp))
+                        }
+                    }
+                }) {
+                    Icon(Icons.Outlined.AspectRatio, "Paper size")
+                }
+            }
+        }
+        if (doc == null) return@Box
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(
+                listOf(doc.paper, doc.scale).filter { it.isNotEmpty() }.joinToString(" at ") + if (doc.kept) " · kept" else "",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            DropdownMenuItem(
+                text = { Text(if (doc.size == null) "Automatic · ${doc.paper}" else "Automatic") },
+                leadingIcon = { if (doc.size == null) Icon(Icons.Filled.Check, null) },
+                onClick = { open = false; vm.size(null) },
+            )
+            listOf("A4", "A3", "A2", "A1", "A0").forEach { s ->
+                DropdownMenuItem(
+                    text = { Text(s) },
+                    leadingIcon = { if (doc.size == s) Icon(Icons.Filled.Check, null) },
+                    onClick = { open = false; vm.size(s) },
+                )
+            }
+        }
+    }
+}
+
+/** Previous and next sheet, floating over the drawing; only for drawings of several sheets. */
+@Composable
+private fun SheetSwitcher(vm: AppViewModel, doc: Doc, modifier: Modifier) {
+    val at = doc.sheets.indexOf(doc.sheet)
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 3.dp,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(enabled = at > 0, onClick = { vm.sheet(doc.sheets[at - 1]) }) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous sheet")
+            }
+            Text("Sheet ${at + 1} of ${doc.sheets.size}", style = MaterialTheme.typography.labelLarge)
+            IconButton(enabled = at < doc.sheets.size - 1, onClick = { vm.sheet(doc.sheets[at + 1]) }) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next sheet")
+            }
+        }
+    }
+}
+
+/**
+ * The sheet: the viewer page from the Rust core (zoom, pan, tap picking) in a WebView that
+ * is made once. The page talks over `window.bridge.postMessage` / `onMessage`; a JavaScript
+ * interface carries it.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun Viewer(vm: AppViewModel, onPainting: (Boolean) -> Unit) {
+    val background = MaterialTheme.colorScheme.surfaceContainer.hex()
+    var ready by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf("") }
+    val main = remember { Handler(Looper.getMainLooper()) }
+    val view = remember { mutableStateOf<WebView?>(null) }
+    // When the last drawing was handed to the page, for the log's timing of its paint.
+    val sentAt = remember { longArrayOf(0L) }
+
+    fun send(message: String) {
+        view.value?.evaluateJavascript("window.bridge.onMessage(${JSONObject.quote(message)})", null)
+    }
+
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { context ->
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun post(message: String) {
+                        main.post {
+                            when {
+                                message == "ready" -> { shown = ""; ready = true }
+                                message == "drawn" -> {
+                                    onPainting(false)
+                                    Log.i("Draftwright", "page: painted ${SystemClock.elapsedRealtime() - sentAt[0]} ms after the drawing arrived")
+                                }
+                                message.startsWith("tap:") -> {
+                                    val id = message.removePrefix("tap:")
+                                    if (vm.doc != null) vm.selected = id.ifEmpty { null }
+                                }
+                            }
+                        }
+                    }
+                }, "DwBridge")
+                val bridge = "<script>window.bridge={postMessage:function(m){DwBridge.post(m)}};</script>"
+                val page = viewerHtml(background).replaceFirst("<head>", "<head>$bridge")
+                loadDataWithBaseURL("about:blank", page, "text/html", "utf-8", null)
+                view.value = this
+            }
+        },
+    )
+    val doc = vm.doc
+    LaunchedEffect(ready, doc) {
+        if (!ready) return@LaunchedEffect
+        if (doc == null) {
+            if (shown.isNotEmpty()) {
+                shown = ""
+                send("clear:")
+            }
+            return@LaunchedEffect
+        }
+        val key = "${doc.name}#${doc.sheet}"
+        val fit = shown != key
+        shown = key
+        onPainting(true)
+        val started = SystemClock.elapsedRealtime()
+        val page = viewerShow(fit, doc.svg)
+        val built = SystemClock.elapsedRealtime()
+        send(page)
+        send(doc.hitsMessage)
+        sentAt[0] = started
+        Log.i(
+            "Draftwright",
+            "page: ${page.length / 1024} KB message built in ${built - started} ms, handed over in ${SystemClock.elapsedRealtime() - built} ms",
+        )
+    }
+    LaunchedEffect(ready, vm.selected) {
+        if (ready) send("sel:" + (vm.selected ?: ""))
+    }
+    LaunchedEffect(ready, background) {
+        if (ready) send("bg:$background")
+    }
+}
