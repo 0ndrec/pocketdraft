@@ -146,10 +146,11 @@ fun DrawingScreen(vm: AppViewModel) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Box(Modifier.fillMaxWidth().height(4.dp)) {
-                if (vm.busy != null || painting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if ((vm.busy != null && vm.opening == null) || painting) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Viewer(vm, onPainting = { painting = it })
+                vm.opening?.let { OpeningCard(it, Modifier.align(Alignment.TopCenter).padding(16.dp)) }
                 if (doc != null && doc.sheets.size > 1) {
                     SheetSwitcher(vm, doc, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                 }

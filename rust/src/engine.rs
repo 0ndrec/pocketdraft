@@ -13,7 +13,7 @@ use std::sync::mpsc;
 
 use draftwright::items::Op;
 
-use crate::{cache, library};
+use crate::{cache, library, progress};
 use crate::log::note;
 use draftwright_wasm::{CoreSession, Session};
 use serde_json::Value;
@@ -625,6 +625,8 @@ fn build(
         a.failed = None;
         let part_index = part.as_ref().map(|p| p.0);
         let root = library::root();
+        let rates = progress::rates(root);
+        let _progress = progress::begin(Some(rates.read_ms_per_mb * bytes.len() as f64 / 1_048_576.0));
         let known = library::id_of(&bytes, part_index);
         let analyse = || {
             draftwright::model::analyse_native_bytes_part(&name, &bytes, part_index)
@@ -639,6 +641,13 @@ fn build(
             None => analyse()?,
         };
         let analysed_ms = started.elapsed().as_millis();
+        let faces = progress::Faces::of(&shape);
+        let build_rate = if warm { rates.warm_build_ms_per_face } else { rates.build_ms_per_face };
+        progress::stage(
+            progress::Stage::Building,
+            Some(build_rate * faces.total as f64),
+            Some(progress::describe(faces, analysis.features.len())),
+        );
         let id = library::entry_id(&analysis.binding.source_sha256, part_index);
         let projections = root.map(|r| cache::projections(r, &id)).unwrap_or_default();
         let (saved, starting) = starting_spec(root, &id, replaces.as_deref());
@@ -682,6 +691,8 @@ fn build(
         a.entry = Some(id.clone());
         a.kept = 0;
         let session_ms = started.elapsed().as_millis();
+        progress::stage(progress::Stage::Drawing, None, None);
+        progress::learn(root, bytes.len(), (!warm).then_some(analysed_ms), faces.total, session_ms - analysed_ms, warm);
         let doc = view(a)?;
         if let Some(root) = root {
             let entry = library::Entry {

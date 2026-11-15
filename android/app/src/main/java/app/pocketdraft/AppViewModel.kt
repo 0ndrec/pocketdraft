@@ -12,6 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.draftwright_ffi.Doc
@@ -19,6 +21,8 @@ import uniffi.draftwright_ffi.DwException
 import uniffi.draftwright_ffi.Entry
 import uniffi.draftwright_ffi.Item
 import uniffi.draftwright_ffi.PartRow
+import uniffi.draftwright_ffi.Progress
+import uniffi.draftwright_ffi.openingProgress
 import uniffi.draftwright_ffi.TitleChange
 import uniffi.draftwright_ffi.applyOps
 import uniffi.draftwright_ffi.answerProblem
@@ -75,6 +79,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Text of the running operation; `null` when idle. */
     var busy by mutableStateOf<String?>(null)
         private set
+    /** How far the model being opened has got, while it is read and laid out; `null` otherwise. */
+    var opening by mutableStateOf<Progress?>(null)
+        private set
     /** News or an error, shown in a snackbar. */
     var message by mutableStateOf<String?>(null)
     var exact by mutableStateOf(false)
@@ -119,12 +126,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Run a core operation that answers with a drawing. */
-    private fun run(label: String, then: (Doc) -> Unit = {}, op: () -> Doc) {
+    private fun run(label: String, then: (Doc) -> Unit = {}, tracked: Boolean = false, op: () -> Doc) {
         if (busy != null) return
         busy = label
         message = null
         messageUndo = false
         viewModelScope.launch {
+            // An open reports its stages: read them while the call waits.
+            val watch = if (!tracked) null else launch {
+                while (isActive) {
+                    opening = withContext(Dispatchers.Default) { openingProgress() }
+                    delay(250)
+                }
+            }
             try {
                 val started = SystemClock.elapsedRealtime()
                 val result = withContext(Dispatchers.Default) { op() }
@@ -144,6 +158,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 showRemoved = false
                 message = e.text()
             } finally {
+                watch?.cancel()
+                opening = null
                 busy = null
                 refresh()
             }
@@ -196,7 +212,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         showProblems = false
         showDatums = false
         showRemoved = false
-        run("Building the drawing…") { openFile(name, bytes, part?.index, part?.name) }
+        run("Building the drawing…", tracked = true) { openFile(name, bytes, part?.index, part?.name) }
     }
 
     fun openEntry(id: String) {
@@ -204,7 +220,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         showProblems = false
         showDatums = false
         showRemoved = false
-        run("Opening…") { openSaved(id) }
+        run("Opening…", tracked = true) { openSaved(id) }
     }
 
     fun remove(id: String) {

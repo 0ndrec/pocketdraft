@@ -53,6 +53,7 @@ the drawing core to the screen, how to test it, and the traps already found. Bui
 | `library.rs` | The library on disk: entries, saved edits (the Spec), thumbnails, settings, title-block defaults. |
 | `fixes.rs` | Field descriptions for the editors and the Spec operations a user's value turns into. |
 | `viewer.rs` | The HTML page the WebView shows the drawing in: zoom, pan, tap picking, the messages it exchanges with Kotlin. |
+| `progress.rs` | How far an open has got (stage, the model's faces by surface, an estimated bar) and the per-phone timings the estimate learns from (`timing.json` in the library folder). |
 | `log.rs` | `note!`: one line to the Android log (tag `Draftwright`), or standard error on a computer. |
 
 **One engine thread.** The core's session is not shared between threads and its geometry
@@ -94,6 +95,7 @@ holds a partial state: it replaces `doc` with the answer.
 | `ui/DrawingScreen.kt` | The drawing: top bar (back, undo, menu with Save as DXF), bottom bar (problems, paper, title block, PDF), the WebView viewer. |
 | `ui/Sheets.kt` | Bottom sheets: problems, a dimension's editor, the title block, removed dimensions. |
 | `ui/Datums.kt` | Datums and origins, and the chooser a tapped face opens. |
+| `ui/Opening.kt` | The card that shows an open's stage, what the model holds and the estimated bar. |
 | `ui/PartPicker.kt` | What to draw from an assembly. |
 | `ui/SettingsScreen.kt` | App settings and title-block defaults. |
 | `ui/Theme.kt` | Material 3 colours (the system palette on Android 12+). |
@@ -109,6 +111,18 @@ through a `@JavascriptInterface` called `DwBridge`: `ready`, `drawn`, `tap:<id>`
 text runs), every title-block cell (`title:<key>`) and every face of the part that can be a
 datum (`side:<side>@<view>#<face>`, from `engine::side_hits`). The page picks the nearest box
 to a tap; Kotlin opens the editor that the id's prefix names.
+
+**Progress of an open.** The core reports no progress: an open is three calls that each
+run to their end (read and recognise the model, build the session, draw the sheet).
+`engine::build` marks each stage in `progress.rs`. After the first it knows the model's
+faces (by surface: planar, cylindrical, other) and features, and estimates the second stage
+from the faces and how long a face took on this phone before. `opening_progress()` reads
+that state under its own lock, not through the engine thread, so Kotlin polls it four times
+a second while `open_file` or `open_saved` waits (`run(..., tracked = true)`). The bar is an
+estimate: it keeps pace with the clock to 80 % and then slows, so it never fills before the
+stage ends. A stage's time varies several times over between models of the same face count
+(curved faces cost more), and the learnt rates average every open. An open whose sheet
+comes from the cache shows the sheet at once and no card.
 
 ## Adding a feature
 

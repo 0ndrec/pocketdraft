@@ -13,8 +13,11 @@ mod fixes;
 #[allow(dead_code)]
 mod library;
 mod log;
+mod progress;
 #[allow(dead_code)]
 mod viewer;
+
+pub use progress::Progress;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -433,6 +436,13 @@ pub fn open_saved(id: String) -> Answer<Doc> {
     answer(engine::open_saved(id))
 }
 
+/// How far the model being opened has got, or `None` when no model is being read or built.
+/// Answers at once, also while an open call waits (it does not go through the engine thread).
+#[uniffi::export]
+pub fn opening_progress() -> Option<Progress> {
+    progress::now()
+}
+
 // --- the open drawing ------------------------------------------------------------------
 
 #[uniffi::export]
@@ -754,7 +764,7 @@ mod tests {
         let other = d.items.iter().find(|i| i.kind == "dimension").expect("a dimension").clone();
         let d = remove_dimension(other.id.clone()).expect("remove with the layout kept");
         assert!(d.removed.iter().any(|r| r.id == other.id));
-        let d = restore_dimension(other.id).expect("restore");
+        restore_dimension(other.id).expect("restore");
         let shown = |d: &Doc| d.items.iter().any(|i| i.id == item.id);
         // Undo takes a removal back as well.
         remove_dimension(item.id.clone()).expect("remove again");

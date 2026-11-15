@@ -79,8 +79,9 @@ fun LibraryScreen(vm: AppViewModel) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Box(Modifier.fillMaxWidth().padding(vertical = 0.dp)) {
-                if (vm.busy != null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (vm.busy != null && vm.opening == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
+            vm.opening?.let { OpeningCard(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             if (vm.entries.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
