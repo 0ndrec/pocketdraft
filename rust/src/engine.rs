@@ -954,6 +954,17 @@ pub fn pdf() -> Result<Vec<u8>, String> {
     })
 }
 
+/// DXF of the shown sheet (the core writes one sheet per file), with the credit setting applied.
+pub fn dxf() -> Result<Vec<u8>, String> {
+    call(|a| {
+        let session = a.session.as_ref().ok_or_else(|| no_session(&a.failed))?;
+        let core = &session.0;
+        let mut drawing = core.drawing_on_sheet(a.sheet).map_err(err)?;
+        uncredit(&mut drawing, &author(core));
+        Ok(drawing.dxf())
+    })
+}
+
 fn view(a: &mut Actor) -> Result<DocView, String> {
     let session = a.session.as_ref().ok_or_else(|| no_session(&a.failed))?;
     let core = &session.0;

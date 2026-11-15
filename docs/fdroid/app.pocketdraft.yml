@@ -16,7 +16,7 @@ Repo: https://github.com/0ndrec/pocketdraft.git
 Builds:
   - versionName: 0.1.0
     versionCode: 1
-    commit: <the commit of tag v0.1.0>
+    commit: 788b3666e6fc7104a4b4f14b0d110912539dc2ef
     subdir: android/app
     sudo:
       - apt-get update

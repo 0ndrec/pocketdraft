@@ -32,6 +32,11 @@ import uniffi.draftwright_ffi.openFile
 import uniffi.draftwright_ffi.openSaved
 import uniffi.draftwright_ffi.parts
 import uniffi.draftwright_ffi.pdf
+import uniffi.draftwright_ffi.dxf
+import uniffi.draftwright_ffi.CoreFeatures
+import uniffi.draftwright_ffi.coreFeatures
+import uniffi.draftwright_ffi.setShaded
+import uniffi.draftwright_ffi.setUnits
 import uniffi.draftwright_ffi.removeDimension as coreRemoveDimension
 import uniffi.draftwright_ffi.removeEntry
 import uniffi.draftwright_ffi.restoreDimension as coreRestoreDimension
@@ -81,6 +86,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var credit by mutableStateOf(true)
         private set
     var showSettings by mutableStateOf(false)
+    /** What the drawing core can do: the controls of features it lacks stay hidden. */
+    var features by mutableStateOf(CoreFeatures(papers = emptyList(), units = listOf("mm"), shaded = false, dxf = false))
+        private set
     var picking by mutableStateOf<Picking?>(null)
         private set
     /** The item picked on the drawing (`title:<key>` for the title block), or `null`. */
@@ -100,6 +108,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         exact = exactPaper()
         keepSheet = coreKeepSheet()
         credit = creditsDraftwright()
+        features = coreFeatures()
         refresh()
     }
 
@@ -297,6 +306,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun origin(axis: String, end: String?) = run("Laying out the sheet…") { setOrigin(axis, end) }
 
+    /** The drawing's length units; only offered when the core has more than one. */
+    fun units(units: String) = run("Laying out the sheet…") { setUnits(units) }
+
+    /** The isometric view shaded or as lines; only offered when the core can shade. */
+    fun shaded(on: Boolean) = run("Drawing the sheet…") { setShaded(on) }
+
     fun uncitedDatums(shown: Boolean) = run("Laying out the sheet…") { setUncitedDatums(shown) }
 
     /** Remove a dimension from the drawing; the snackbar offers to undo it. */
@@ -322,16 +337,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun undo() = run("Undoing…") { coreUndo() }
 
-    fun savePdf(resolver: ContentResolver, uri: Uri) {
+    fun savePdf(resolver: ContentResolver, uri: Uri) = save(resolver, uri, "PDF") { pdf() }
+
+    /** The shown sheet as DXF. */
+    fun saveDxf(resolver: ContentResolver, uri: Uri) = save(resolver, uri, "DXF") { dxf() }
+
+    private fun save(resolver: ContentResolver, uri: Uri, format: String, make: () -> ByteArray) {
         if (busy != null) return
-        busy = "Making the PDF…"
+        busy = "Making the $format…"
         viewModelScope.launch {
             try {
-                val bytes = withContext(Dispatchers.Default) { pdf() }
+                val bytes = withContext(Dispatchers.Default) { make() }
                 withContext(Dispatchers.IO) { resolver.openOutputStream(uri)?.use { it.write(bytes) } }
-                message = "PDF saved"
+                message = "$format saved"
             } catch (e: Exception) {
-                message = (e as? DwException)?.text() ?: e.message ?: "Could not save the PDF"
+                message = (e as? DwException)?.text() ?: e.message ?: "Could not save the $format"
             } finally {
                 busy = null
             }

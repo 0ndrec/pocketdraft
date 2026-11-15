@@ -91,7 +91,7 @@ holds a partial state: it replaces `doc` with the answer.
 | `AppViewModel.kt` | All state (`doc`, `busy`, `message`, which sheet is open, the settings) and every call into Rust. `run(label, then) { op }` runs one core call off the main thread, shows progress, stores the answer and turns a failure into a snackbar message. |
 | `ui/App.kt` | The root: the drawing screen always composed, the library drawn over it while no drawing is open, the snackbar, the part picker, Settings. |
 | `ui/LibraryScreen.kt` | The library list with thumbnails, "Open STEP file". |
-| `ui/DrawingScreen.kt` | The drawing: top bar (back, undo, menu), bottom bar (problems, paper, title block, PDF), the WebView viewer. |
+| `ui/DrawingScreen.kt` | The drawing: top bar (back, undo, menu with Save as DXF), bottom bar (problems, paper, title block, PDF), the WebView viewer. |
 | `ui/Sheets.kt` | Bottom sheets: problems, a dimension's editor, the title block, removed dimensions. |
 | `ui/Datums.kt` | Datums and origins, and the chooser a tapped face opens. |
 | `ui/PartPicker.kt` | What to draw from an assembly. |
@@ -138,6 +138,35 @@ The last drawn sheet is cached and shown before the session is ready
 new field in `DocView`, a change to how the drawing is edited), **bump `FORMAT` in
 `cache.rs`**, or users see the old picture until their next edit. Bumping it drops every
 cached analysis and projection too, so the next open of each drawing is a cold one.
+
+### What the core can do
+
+The interface asks the Rust layer what the drawing core can do (`core_features()` in
+`lib.rs`) and shows a control only when its feature is there: the paper menu lists the
+families and sizes it returns, the ⋮ menu has Units only with more than one unit, Shaded
+isometric only when the core shades, and Save as DXF only when it writes DXF. With
+draftwright 0.2.15 that is ISO paper, millimetres, no shading, and DXF.
+
+`set_units` and `set_shaded` are refused while `core_features()` says no, so a control
+can never reach a core that lacks the Spec key.
+
+### Moving to draftwright 0.6
+
+draftwright 0.6.0 (in pre-release as 0.6.0-alpha.2) adds what the controls above wait for:
+inch drawings (`units: "in"`), ANSI and ARCH paper (`layout::ANSI_PAGES`,
+`layout::ARCH_PAGES`, Spec key `sheet/paper`), a shaded isometric view
+(`views/iso/style: "shaded"`) and editable DXF. To move to it, still unmodified:
+
+1. Change the tag of both core dependencies in `rust/Cargo.toml`
+   (`https://github.com/pzfreo/draftwright`, the repository's new name) and fix what no
+   longer compiles in `engine.rs`.
+2. In `core_features()`, add the ANSI and ARCH families, `"in"`, and `shaded: true`.
+3. In `lib.rs`'s `doc()`, take `units` from the Spec (`core.spec().units.symbol()`) and
+   `shaded` from `views/iso/style`.
+4. Bump the cache `FORMAT` (the drawings change) and run every test.
+5. Watch the core's own notes: GD&T frames grew to CAD size, so some sheets get bigger
+   (pzfreo/draftwright#452), and a quiddity change may renumber STEP faces, which the
+   datum tap targets (`side_hits`) depend on.
 
 ## Testing
 

@@ -89,6 +89,32 @@ pub struct Doc {
     pub origins: std::collections::HashMap<String, String>,
     /// Datums nothing refers to are drawn too.
     pub uncited_datums: bool,
+    /// Length units of the drawing (`mm`, or `in` with a core that draws in inches).
+    pub units: String,
+    /// The isometric view is drawn shaded.
+    pub shaded: bool,
+}
+
+/// What the drawing core in this build can do. The interface shows a control only when the
+/// core has its feature, so moving to a newer core lights the controls up; see
+/// [`core_features`] for the one place that changes then.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CoreFeatures {
+    /// Paper families, each with its sizes from smallest to largest.
+    pub papers: Vec<PaperFamily>,
+    /// Length units a drawing can be made in; the first is the default.
+    pub units: Vec<String>,
+    /// The isometric view can be drawn shaded.
+    pub shaded: bool,
+    /// A sheet can be saved as DXF.
+    pub dxf: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PaperFamily {
+    /// `ISO`, `ANSI`, `ARCH`.
+    pub name: String,
+    pub sizes: Vec<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -214,6 +240,9 @@ fn doc(d: engine::DocView) -> Doc {
         datums: d.datums.into_iter().collect(),
         origins: d.origins.into_iter().collect(),
         uncited_datums: d.uncited_datums,
+        // draftwright 0.2.15 draws in millimetres only.
+        units: "mm".into(),
+        shaded: false,
         hits_message: viewer::hits(&d.hits),
         problems: d
             .problems
@@ -549,6 +578,53 @@ pub fn pdf() -> Answer<Vec<u8>> {
     engine::pdf().map_err(DwError::from)
 }
 
+/// The shown sheet as DXF.
+#[uniffi::export]
+pub fn dxf() -> Answer<Vec<u8>> {
+    engine::dxf().map_err(DwError::from)
+}
+
+// --- what the core can do --------------------------------------------------------------
+
+/// What the drawing core can do. With draftwright 0.2.15: ISO paper, millimetres, no
+/// shading. draftwright 0.6 adds ANSI and ARCH paper (`layout::ANSI_PAGES`,
+/// `layout::ARCH_PAGES`), inches (`"in"`) and a shaded isometric view.
+#[uniffi::export]
+pub fn core_features() -> CoreFeatures {
+    let family = |name: &str, pages: &[(&str, f64, f64)]| PaperFamily {
+        name: name.into(),
+        sizes: pages.iter().map(|p| p.0.to_string()).collect(),
+    };
+    CoreFeatures {
+        papers: vec![family("ISO", &draftwright::layout::PAGES)],
+        units: vec!["mm".into()],
+        shaded: false,
+        dxf: true,
+    }
+}
+
+fn unsupported(what: &str) -> DwError {
+    DwError::Failed { reason: format!("This version of the drawing core has no {what}") }
+}
+
+/// The drawing's length units (`mm`, `in`); refused when the core has no such units.
+#[uniffi::export]
+pub fn set_units(units: String) -> Answer<Doc> {
+    if !core_features().units.contains(&units) {
+        return Err(unsupported(&format!("“{units}” units")));
+    }
+    answer(engine::set("units", serde_json::Value::String(units)))
+}
+
+/// The isometric view shaded or as lines.
+#[uniffi::export]
+pub fn set_shaded(on: bool) -> Answer<Doc> {
+    if !core_features().shaded {
+        return Err(unsupported("shaded views"));
+    }
+    answer(engine::set("views/iso/style", serde_json::Value::String(if on { "shaded" } else { "wireframe" }.into())))
+}
+
 /// The open drawing's STEP file, for sharing.
 #[uniffi::export]
 pub fn model() -> Answer<ModelFile> {
@@ -828,6 +904,17 @@ mod tests {
     }
 
     #[test]
+    fn the_core_features_match_the_core() {
+        let f = core_features();
+        assert_eq!(f.papers.len(), 1);
+        assert_eq!(f.papers[0].sizes, ["A4", "A3", "A2", "A1", "A0"]);
+        assert_eq!(f.units, ["mm"]);
+        assert!(f.dxf && !f.shaded);
+        assert!(set_units("in".into()).is_err(), "no inches in this core");
+        assert!(set_shaded(true).is_err(), "no shading in this core");
+    }
+
+    #[test]
     fn the_credit_leaves_the_drawn_by_cell_when_turned_off() {
         let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("dw-ffi-credit-{}", std::process::id()));
@@ -855,6 +942,10 @@ mod tests {
         // The label's glyphs are outlines: eleven letters of them are gone too.
         assert!(d.svg.len() + 1500 < whole, "{} against {whole}", d.svg.len());
         assert!(pdf().expect("pdf").starts_with(b"%PDF"));
+        // The DXF leaves the credit out too.
+        let dxf = String::from_utf8(dxf().expect("dxf")).expect("text DXF");
+        assert!(dxf.contains("SECTION") && dxf.contains("ENTITIES"), "a DXF");
+        assert!(!dxf.contains("draftwright.io"), "no credit link");
 
         // An author stands alone.
         let d = set_titles(vec![TitleChange { key: "drawn_by".into(), value: "M. Ivanova".into() }]).expect("author");

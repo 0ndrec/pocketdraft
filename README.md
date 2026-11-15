@@ -37,7 +37,7 @@ permissions.
 - **Datums and origins**: choose which faces are datums and where dimensions are measured from.
 - **Paper**: automatic, or a size you choose; "Keep paper and scale" keeps edits fast on
   large parts.
-- **PDF export** of every sheet, with embedded fonts.
+- **PDF export** of every sheet, with embedded fonts, and **DXF** of a sheet for a CAD program.
 - **Library** of your drawings, each with its edits, kept between sessions.
 - **Material You**: follows the system's colours and dark theme.
 
@@ -61,8 +61,8 @@ last years).
 5. The **problems** button (bottom left, with a count) lists what is still wrong; open a
    problem to see its fixes.
 6. The **paper** button chooses the sheet size; the **title block** button opens the title
-   block; the **⋮** menu holds datums and origins, hidden lines, removed dimensions and
-   Settings.
+   block; the **⋮** menu holds datums and origins, hidden lines, removed dimensions, Save as
+   DXF and Settings.
 7. **Undo** (top bar) takes back any edit. The **PDF** button saves the drawing.
 
 Drawings stay in the library with their edits. Settings (gear in the library, or ⋮ →

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -44,6 +45,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -83,8 +86,8 @@ private const val SIDE = "side:"
 
 /**
  * The open drawing. Material 3 layout for a canvas screen:
- * - top app bar: back, the name, undo, and a menu (datums and origins, hidden lines, removed
- *   dimensions);
+ * - top app bar: back, the name, undo, and a menu (datums and origins, how the drawing is
+ *   drawn, removed dimensions, Save as DXF, Settings);
  * - the sheet in a WebView, with a sheet switcher floating over it when there are several;
  * - bottom app bar: the drawing's tools as icons, and Save PDF as the screen's main action.
  */
@@ -97,6 +100,11 @@ fun DrawingScreen(vm: AppViewModel) {
     val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         uri?.let { vm.savePdf(context.contentResolver, it) }
     }
+    val saveDxf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/dxf")) { uri ->
+        uri?.let { vm.saveDxf(context.contentResolver, it) }
+    }
+    // The file name: the model's, without the part after " · " or the extension.
+    val base = (doc?.name ?: "drawing").substringBefore(" · ").substringBeforeLast('.')
     BackHandler(enabled = doc != null) {
         when {
             vm.selected != null -> vm.selected = null
@@ -124,15 +132,16 @@ fun DrawingScreen(vm: AppViewModel) {
                     Tool("Undo") {
                         IconButton(onClick = vm::undo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
                     }
-                    More(vm)
+                    More(vm, onSaveDxf = {
+                        // The core writes one sheet per DXF: name the sheet when there are several.
+                        val sheet = doc?.takeIf { it.sheets.size > 1 }?.let { "-sheet${it.sheet}" } ?: ""
+                        saveDxf.launch("$base$sheet.dxf")
+                    })
                 },
             )
         },
         bottomBar = {
-            Tools(vm, onSavePdf = {
-                val name = (doc?.name ?: "drawing").substringBefore(" · ").substringBeforeLast('.')
-                savePdf.launch("$name.pdf")
-            })
+            Tools(vm, onSavePdf = { savePdf.launch("$base.pdf") })
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
@@ -167,8 +176,9 @@ fun DrawingScreen(vm: AppViewModel) {
  * of every session (problems, paper, title block, PDF, undo) stay on the bars.
  */
 @Composable
-private fun More(vm: AppViewModel) {
+private fun More(vm: AppViewModel, onSaveDxf: () -> Unit) {
     val doc = vm.doc
+    val features = vm.features
     val removed = doc?.removed?.size ?: 0
     val hidden = doc?.hidden ?: true
     var open by remember { mutableStateOf(false) }
@@ -187,6 +197,28 @@ private fun More(vm: AppViewModel) {
                 },
                 onClick = { open = false; vm.hidden(!hidden) },
             )
+            // Controls for what newer drawing cores can do; hidden while the core cannot.
+            if (features.shaded) {
+                val shaded = doc?.shaded ?: false
+                DropdownMenuItem(
+                    text = { Text("Shaded isometric") },
+                    leadingIcon = {
+                        Icon(if (shaded) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, null)
+                    },
+                    onClick = { open = false; vm.shaded(!shaded) },
+                )
+            }
+            if (features.units.size > 1) {
+                HorizontalDivider()
+                MenuLabel("Units")
+                features.units.forEach { u ->
+                    DropdownMenuItem(
+                        text = { Text(unitName(u)) },
+                        leadingIcon = { if (doc?.units == u) Icon(Icons.Filled.Check, null) },
+                        onClick = { open = false; if (doc?.units != u) vm.units(u) },
+                    )
+                }
+            }
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(if (removed > 0) "Removed dimensions · $removed" else "No removed dimensions") },
@@ -194,6 +226,13 @@ private fun More(vm: AppViewModel) {
                 enabled = removed > 0,
                 onClick = { open = false; vm.selected = null; vm.showRemoved = true },
             )
+            if (features.dxf) {
+                DropdownMenuItem(
+                    text = { Text(if ((doc?.sheets?.size ?: 1) > 1) "Save sheet as DXF" else "Save as DXF") },
+                    leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) },
+                    onClick = { open = false; onSaveDxf() },
+                )
+            }
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Settings") },
@@ -202,6 +241,23 @@ private fun More(vm: AppViewModel) {
             )
         }
     }
+}
+
+/** A group heading inside a menu. */
+@Composable
+private fun MenuLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+private fun unitName(units: String) = when (units) {
+    "mm" -> "Millimetres"
+    "in" -> "Inches"
+    else -> units
 }
 
 /** A long press on an icon-only control names it. */
@@ -276,18 +332,34 @@ private fun SizeTool(vm: AppViewModel) {
         }
         if (doc == null) return@Box
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text(
-                listOf(doc.paper, doc.scale).filter { it.isNotEmpty() }.joinToString(" at ") + if (doc.kept) " · kept" else "",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+            MenuLabel(listOf(doc.paper, doc.scale).filter { it.isNotEmpty() }.joinToString(" at ") + if (doc.kept) " · kept" else "")
             DropdownMenuItem(
                 text = { Text(if (doc.size == null) "Automatic · ${doc.paper}" else "Automatic") },
                 leadingIcon = { if (doc.size == null) Icon(Icons.Filled.Check, null) },
                 onClick = { open = false; vm.size(null) },
             )
-            listOf("A4", "A3", "A2", "A1", "A0").forEach { s ->
+            // The sizes the core has; with several paper families, chips choose the family shown
+            // (at first the family of the drawing's paper).
+            val families = vm.features.papers
+            var shown by remember(doc.paper) {
+                mutableStateOf(families.firstOrNull { doc.paper.startsWith("${it.name} ") }?.name ?: families.firstOrNull()?.name)
+            }
+            if (families.size > 1) {
+                HorizontalDivider()
+                Row(
+                    Modifier.padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    families.forEach { f ->
+                        FilterChip(
+                            selected = shown == f.name,
+                            onClick = { shown = f.name },
+                            label = { Text(f.name) },
+                        )
+                    }
+                }
+            }
+            families.firstOrNull { it.name == shown }?.sizes?.forEach { s ->
                 DropdownMenuItem(
                     text = { Text(s) },
                     leadingIcon = { if (doc.size == s) Icon(Icons.Filled.Check, null) },
