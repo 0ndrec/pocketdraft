@@ -1,0 +1,1 @@
+Save a sheet as DXF for a CAD program. The paper menu and other controls now follow what the drawing core can do, ready for inch drawings, US paper sizes and shaded views in a later core.
