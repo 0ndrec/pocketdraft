@@ -240,9 +240,8 @@ fn doc(d: engine::DocView) -> Doc {
         datums: d.datums.into_iter().collect(),
         origins: d.origins.into_iter().collect(),
         uncited_datums: d.uncited_datums,
-        // draftwright 0.2.15 draws in millimetres only.
-        units: "mm".into(),
-        shaded: false,
+        units: d.units,
+        shaded: d.shaded,
         hits_message: viewer::hits(&d.hits),
         problems: d
             .problems
@@ -586,9 +585,8 @@ pub fn dxf() -> Answer<Vec<u8>> {
 
 // --- what the core can do --------------------------------------------------------------
 
-/// What the drawing core can do. With draftwright 0.2.15: ISO paper, millimetres, no
-/// shading. draftwright 0.6 adds ANSI and ARCH paper (`layout::ANSI_PAGES`,
-/// `layout::ARCH_PAGES`), inches (`"in"`) and a shaded isometric view.
+/// What the drawing core can do: with draftwright 0.6, ISO, ANSI and ARCH paper,
+/// millimetres and inches, and a shaded isometric view.
 #[uniffi::export]
 pub fn core_features() -> CoreFeatures {
     let family = |name: &str, pages: &[(&str, f64, f64)]| PaperFamily {
@@ -596,9 +594,13 @@ pub fn core_features() -> CoreFeatures {
         sizes: pages.iter().map(|p| p.0.to_string()).collect(),
     };
     CoreFeatures {
-        papers: vec![family("ISO", &draftwright::layout::PAGES)],
-        units: vec!["mm".into()],
-        shaded: false,
+        papers: vec![
+            family("ISO", &draftwright::layout::PAGES),
+            family("ANSI", &draftwright::layout::ANSI_PAGES),
+            family("ARCH", &draftwright::layout::ARCH_PAGES),
+        ],
+        units: vec!["mm".into(), "in".into()],
+        shaded: true,
         dxf: true,
     }
 }
@@ -724,8 +726,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("dw-ffi-removed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         init(dir.to_string_lossy().into_owned());
-        let bytes = include_bytes!("../tests/fixtures/assembly.step").to_vec();
-        let d = open_file("assembly.step".into(), bytes, None, None).expect("open");
+        let bytes = include_bytes!("../tests/fixtures/GRM-02_shaft.step").to_vec();
+        let d = open_file("GRM-02_shaft.step".into(), bytes, None, None).expect("open");
         assert!(d.removed.is_empty());
         let item = d.items.iter().find(|i| i.kind == "dimension").expect("a dimension").clone();
         let shown = |d: &Doc| d.items.iter().any(|i| i.id == item.id);
@@ -739,16 +741,16 @@ mod tests {
         let d = restore_dimension(item.id.clone()).expect("restore");
         assert!(shown(&d) && d.removed.is_empty());
 
-        // One of the core's ready fixes keeps the layout, and the core then refuses removals:
-        // the app releases the guard for such an edit.
-        let fix = d
+        // Some of the core's ready fixes keep the layout ("changes one item"), and the core then
+        // refuses removals: the app releases the guard for such an edit.
+        let ops = d
             .problems
             .iter()
             .flat_map(|p| p.fixes.iter())
             .find(|f| f.ops_json.contains("keep_layout"))
-            .expect("a fix that keeps the layout")
-            .clone();
-        let d = apply_ops(fix.ops_json).expect("fix");
+            .map(|f| f.ops_json.clone())
+            .expect("a fix that keeps the layout");
+        let d = apply_ops(ops).expect("keep the layout");
         let other = d.items.iter().find(|i| i.kind == "dimension").expect("a dimension").clone();
         let d = remove_dimension(other.id.clone()).expect("remove with the layout kept");
         assert!(d.removed.iter().any(|r| r.id == other.id));
@@ -906,12 +908,35 @@ mod tests {
     #[test]
     fn the_core_features_match_the_core() {
         let f = core_features();
-        assert_eq!(f.papers.len(), 1);
+        assert_eq!(f.papers.len(), 3);
         assert_eq!(f.papers[0].sizes, ["A4", "A3", "A2", "A1", "A0"]);
-        assert_eq!(f.units, ["mm"]);
-        assert!(f.dxf && !f.shaded);
-        assert!(set_units("in".into()).is_err(), "no inches in this core");
-        assert!(set_shaded(true).is_err(), "no shading in this core");
+        assert_eq!(f.papers[1].sizes[1], "ANSI B");
+        assert_eq!(f.papers[2].sizes[4], "ARCH E");
+        assert_eq!(f.units, ["mm", "in"]);
+        assert!(f.dxf && f.shaded);
+        assert!(set_units("feet".into()).is_err(), "no such units");
+    }
+
+    #[test]
+    fn inches_us_paper_and_shading_reach_the_drawing() {
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("dw-ffi-units-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.to_string_lossy().into_owned());
+        let bytes = include_bytes!("../tests/fixtures/assembly.step").to_vec();
+        let d = open_file("assembly.step".into(), bytes, None, None).expect("open");
+        assert_eq!(d.units, "mm");
+        assert!(!d.shaded);
+
+        let d = set_units("in".into()).expect("inches");
+        assert_eq!(d.units, "in");
+        let d = set_paper(Some("ANSI B".into()), true).expect("ANSI B");
+        assert_eq!(d.paper, "ANSI B");
+        let d = set_shaded(true).expect("shaded");
+        assert!(d.shaded && d.units == "in");
+        assert!(dxf().expect("dxf").len() > 1000);
+        let d = set_shaded(false).expect("lines");
+        assert!(!d.shaded);
     }
 
     #[test]
@@ -946,6 +971,7 @@ mod tests {
         let dxf = String::from_utf8(dxf().expect("dxf")).expect("text DXF");
         assert!(dxf.contains("SECTION") && dxf.contains("ENTITIES"), "a DXF");
         assert!(!dxf.contains("draftwright.io"), "no credit link");
+        assert!(!dxf.lines().any(|l| l.trim() == "draftwright"), "no credit text in the DXF");
 
         // An author stands alone.
         let d = set_titles(vec![TitleChange { key: "drawn_by".into(), value: "M. Ivanova".into() }]).expect("author");
@@ -982,3 +1008,4 @@ mod tests {
         set_title_defaults(Vec::new()).expect("clear");
     }
 }
+

@@ -150,23 +150,23 @@ draftwright 0.2.15 that is ISO paper, millimetres, no shading, and DXF.
 `set_units` and `set_shaded` are refused while `core_features()` says no, so a control
 can never reach a core that lacks the Spec key.
 
-### Moving to draftwright 0.6
+### draftwright 0.6 (branch `dev`)
 
-draftwright 0.6.0 (in pre-release as 0.6.0-alpha.2) adds what the controls above wait for:
-inch drawings (`units: "in"`), ANSI and ARCH paper (`layout::ANSI_PAGES`,
-`layout::ARCH_PAGES`, Spec key `sheet/paper`), a shaded isometric view
-(`views/iso/style: "shaded"`) and editable DXF. To move to it, still unmodified:
+The `dev` branch builds on draftwright 0.6.0-alpha.2 (`https://github.com/pzfreo/draftwright`,
+the repository's new name), still unmodified. What the move took:
 
-1. Change the tag of both core dependencies in `rust/Cargo.toml`
-   (`https://github.com/pzfreo/draftwright`, the repository's new name) and fix what no
-   longer compiles in `engine.rs`.
-2. In `core_features()`, add the ANSI and ARCH families, `"in"`, and `shaded: true`.
-3. In `lib.rs`'s `doc()`, take `units` from the Spec (`core.spec().units.symbol()`) and
-   `shaded` from `views/iso/style`.
-4. Bump the cache `FORMAT` (the drawings change) and run every test.
-5. Watch the core's own notes: GD&T frames grew to CAD size, so some sheets get bigger
-   (pzfreo/draftwright#452), and a quiddity change may renumber STEP faces, which the
-   datum tap targets (`side_hits`) depend on.
+- `core_features()` lists the ANSI and ARCH families, `"in"`, and `shaded: true`; the
+  drawing's `units` and `shaded` come from the Spec (`/units`, `/views/iso/style`).
+- The credit: 0.6 keeps a label's outlines as `Item::Glyph` (not `Item::Face`), and writes
+  the title block to DXF as native text from `sheet.dxf.labels` and `sheet.dxf.title_fields`;
+  `uncredit` clears all three.
+- The cache needed no new `FORMAT`: its key holds the core's `ENGINE_VERSION`.
+- Tests: 0.6 offers a local fix that keeps the layout on the shaft model, not the assembly.
+
+Known differences, from the core: a first open of a large model is slower (vent_lid on the
+emulator: 29.4 s against 20.5 s), edits are as fast or faster (hidden lines 3.8 s), GD&T
+frames grew to CAD size (pzfreo/draftwright#452), and STEP face numbers may change (datums
+are stored by side, so saved drawings keep them).
 
 ## Testing
 

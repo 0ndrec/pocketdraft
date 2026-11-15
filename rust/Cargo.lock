@@ -110,6 +110,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "basic-toml"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -332,9 +338,10 @@ dependencies = [
 
 [[package]]
 name = "draftwright"
-version = "0.2.15"
-source = "git+https://github.com/pzfreo/draftwright-rust?tag=v0.2.15#7721a516c5d6f74002b02a791f86601d4eeeb7e0"
+version = "0.6.0-alpha.2"
+source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.0-alpha.2#979a7aa1f21f13a41adbadd889de9d4d20c75ee8"
 dependencies = [
+ "base64",
  "chrono",
  "dxf",
  "flate2",
@@ -369,8 +376,8 @@ dependencies = [
 
 [[package]]
 name = "draftwright-wasm"
-version = "0.2.15"
-source = "git+https://github.com/pzfreo/draftwright-rust?tag=v0.2.15#7721a516c5d6f74002b02a791f86601d4eeeb7e0"
+version = "0.6.0-alpha.2"
+source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.0-alpha.2#979a7aa1f21f13a41adbadd889de9d4d20c75ee8"
 dependencies = [
  "console_error_panic_hook",
  "draftwright",
@@ -572,14 +579,20 @@ dependencies = [
 
 [[package]]
 name = "haecceity"
-version = "0.4.9"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "624676164f629343bbe97d2ac0ee396bc082bf2336e092046f5e30ad66a57e1d"
+checksum = "3f4c30bbe875e4b10842b099030116c1be092d9b10756b4ee6239213c58d85b8"
 dependencies = [
  "flate2",
  "i_overlay",
+ "libm",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
  "spade",
  "step-io",
+ "tempfile",
 ]
 
 [[package]]
@@ -802,6 +815,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "memmap2"
+version = "0.9.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b0ca1155a9ecc25aa12e8313a119f32edf0255fea2f44839c4ac0a12b2ac157"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "mimalloc"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1009,12 +1031,13 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "quiddity"
-version = "0.4.9"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "069f4bdeeae1c68bc4dec145503ddfd0f66880419239995414e8c380f0a9b065"
+checksum = "29ea8eedee7213df9a6a8d83e7dfb31c4e8b7345d6693808907c1ba4fb8367b5"
 dependencies = [
  "flate2",
  "haecceity",
+ "i_overlay",
  "serde",
  "serde_json",
  "sha2 0.11.1",

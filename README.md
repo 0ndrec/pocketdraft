@@ -124,7 +124,7 @@ RUST_MIN_STACK=268435456 cargo test --release --lib
 
 ## The drawing core
 
-The drawings are made by [draftwright](https://github.com/pzfreo/draftwright-rust), used as
+The drawings are made by [draftwright](https://github.com/pzfreo/draftwright), used as
 released and unmodified. Pocketdraft is an independent app built on it and is not affiliated
 with draftwright's author. By default the title block's "Drawn by" cell credits draftwright,
 as the core writes it; Settings can turn that off.

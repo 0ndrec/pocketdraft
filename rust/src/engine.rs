@@ -64,6 +64,12 @@ pub struct DocView {
     pub overflow: bool,
     /// Hidden-line display from the Spec (`None`: the default).
     pub hidden: Option<bool>,
+    /// Length units from the Spec (`mm`, `in`).
+    #[serde(default = "millimetres")]
+    pub units: String,
+    /// The isometric view is drawn shaded.
+    #[serde(default)]
+    pub shaded: bool,
     pub faces: usize,
     pub features: usize,
     /// Title-block fields of the first sheet, as drawn now.
@@ -285,7 +291,9 @@ fn uncredit(drawing: &mut draftwright::output::Drawing, author: &str) {
     };
     for layer in &mut drawing.layers {
         for item in &mut layer.items {
-            let Item::Face(loops) = item else { continue };
+            // draftwright 0.6 keeps a label's outlines as `Glyph`s of its text run; older cores
+            // as plain faces. Both are found by the label's box.
+            let (Item::Face(loops) | Item::Glyph(loops, _)) = item else { continue };
             let all: Vec<draftwright::output::Curve> = loops.iter().flatten().cloned().collect();
             let b = bounds(&all);
             let Some((_, from)) = boxes.iter().find(|(k, _)| b[0] >= k[0] && b[1] >= k[1] && b[2] <= k[2] && b[3] <= k[3]) else {
@@ -293,8 +301,18 @@ fn uncredit(drawing: &mut draftwright::output::Drawing, author: &str) {
             };
             loops.retain(|l| bounds(l)[0] < *from - 0.02);
         }
-        layer.items.retain(|item| !matches!(item, Item::Face(loops) if loops.is_empty()));
+        layer.items.retain(|item| !matches!(item, Item::Face(loops) | Item::Glyph(loops, _) if loops.is_empty()));
     }
+    // draftwright 0.6 writes the title block to DXF as native text from its own copy of the
+    // runs: the credit leaves that copy too (the run goes when no author is left).
+    let structure = &mut drawing.sheet.dxf;
+    for run in structure.labels.iter_mut().chain(structure.title_fields.iter_mut().map(|(_, run)| run)) {
+        if run.text.trim() == credit {
+            run.text = author.to_string();
+        }
+    }
+    structure.labels.retain(|run| !run.text.trim().is_empty());
+    structure.title_fields.retain(|(_, run)| !run.text.trim().is_empty());
     drawing.link = None;
 }
 
@@ -965,6 +983,10 @@ pub fn dxf() -> Result<Vec<u8>, String> {
     })
 }
 
+fn millimetres() -> String {
+    "mm".into()
+}
+
 fn view(a: &mut Actor) -> Result<DocView, String> {
     let session = a.session.as_ref().ok_or_else(|| no_session(&a.failed))?;
     let core = &session.0;
@@ -995,6 +1017,8 @@ fn view(a: &mut Actor) -> Result<DocView, String> {
     let scale = planned.scale.to_string();
     let kept = exact.is_some() && spec.pointer("/sheet/scale").is_some_and(|v| !v.is_null());
     let hidden = spec.pointer("/sheet/hidden").and_then(Value::as_bool);
+    let units = text("/units").unwrap_or_else(millimetres);
+    let shaded = text("/views/iso/style").as_deref() == Some("shaded");
 
     let all = &core.state().problems;
     let overflow = all.iter().any(|p| OVERFLOW.contains(&p.code.as_str()));
@@ -1129,6 +1153,8 @@ fn view(a: &mut Actor) -> Result<DocView, String> {
         kept,
         overflow,
         hidden,
+        units,
+        shaded,
         faces: session.face_count(),
         features: session.feature_count(),
         title,

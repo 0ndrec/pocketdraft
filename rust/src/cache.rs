@@ -401,6 +401,8 @@ mod tests {
             kept: false,
             overflow: false,
             hidden: None,
+            units: "mm".into(),
+            shaded: false,
             faces: 6,
             features: 1,
             title: Vec::new(),
