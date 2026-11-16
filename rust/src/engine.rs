@@ -171,6 +171,13 @@ struct Actor {
     kept: usize,
     /// Why the session queued behind a cached sheet could not be built.
     failed: Option<String>,
+    /// The user's edits that undo can take back. The session's history may hold one more
+    /// step below them, the paper and scale fixed when the drawing was opened ([`fix_sheet`]),
+    /// which is not the user's and is never undone.
+    edits: usize,
+    /// The paper and scale Automatic chose and the app fixed ([`fix_sheet`]): a Spec that
+    /// gives exactly these is shown as Automatic.
+    chosen: Option<(String, String)>,
 }
 
 /// A stopwatch for the engine thread's notes: named laps since the job began, so one line in
@@ -320,9 +327,12 @@ fn uncredit(drawing: &mut draftwright::output::Drawing, author: &str) {
 }
 
 /// What a kept sheet is stored under: the Spec, and whether the credit was drawn (the same
-/// Spec draws differently with it off).
+/// Spec draws differently with it off). The first line names how a new drawing is laid out:
+/// sheets kept before the paper and scale were fixed on opening ([`fix_sheet`]) show the
+/// layout the core chose, which the session no longer draws, so they are not used.
 fn snapshot_key(spec: &str) -> String {
-    if credited() { spec.to_string() } else { format!("{spec}\n(no credit)") }
+    let layout = if KEEP_SHEET.load(std::sync::atomic::Ordering::Relaxed) { "fixed on opening" } else { "chosen" };
+    if credited() { format!("{layout}\n{spec}") } else { format!("{layout}\n{spec}\n(no credit)") }
 }
 
 /// Whether edits give the core the paper and scale it chose ("Keep paper and scale").
@@ -384,7 +394,44 @@ fn edit(a: &mut Actor, ops: Vec<Op>, what: &str) -> Result<DocView, String> {
         result = session.apply(&all, true);
     }
     result.map_err(err)?;
+    a.edits += 1;
     finish(a, what)
+}
+
+/// With "Keep paper and scale" on, give the core the paper and scale it has just chosen, so
+/// that the drawing is shown as later edits keep it. The core lays a sheet out differently
+/// when the same paper and scale are given rather than chosen (views move by up to tens of
+/// mm), so fixing them on the first edit moved every view of a drawing the user had only
+/// filled the title block of. Done when a drawing is built and after Automatic paper, before
+/// the sheet is shown. A pin the core refuses leaves the drawing as it was chosen.
+/// Answers the paper and scale fixed, or `None` when nothing was.
+fn fix_sheet(session: &mut Session) -> Option<(String, String)> {
+    if !automatic(session) {
+        return None;
+    }
+    let pin = keep_sheet_ops(session, &[]);
+    if pin.is_empty() {
+        return None;
+    }
+    match session.apply(&pin, true) {
+        Ok(_) => Some(fixed(session)),
+        Err(e) => {
+            note!("keep sheet: the chosen paper and scale not fixed ({})", e.message);
+            None
+        }
+    }
+}
+
+/// Whether the core chooses both paper and scale (no paper, preferred paper or scale given).
+fn automatic(session: &Session) -> bool {
+    let sheet = &session.0.spec().sheet;
+    sheet.size.is_none() && sheet.preferred_max_size.is_none() && sheet.scale.is_none()
+}
+
+/// The paper and scale the Spec gives (empty where it gives none).
+fn fixed(session: &Session) -> (String, String) {
+    let sheet = &session.0.spec().sheet;
+    (sheet.size.clone().unwrap_or_default(), sheet.scale.clone().unwrap_or_default())
 }
 
 /// After an edit on the engine thread: the new view of the drawing, saved with its library
@@ -435,6 +482,8 @@ fn sender() -> &'static mpsc::Sender<Job> {
                     file: String::new(),
                     bytes: Vec::new(),
                     kept: 0,
+                    edits: 0,
+                    chosen: None,
                     failed: None,
                 };
                 for job in rx {
@@ -661,8 +710,9 @@ fn build(
             Ok(spec) => CoreSession::with_projections(shape, analysis, spec, projections).map_err(err),
             Err(e) => Err(e.to_string()),
         };
-        let session = match direct {
-            Ok(core) => Session(core),
+        // The user's edits in the session's history: the migration below is one.
+        let (mut session, edits) = match direct {
+            Ok(core) => (Session(core), 0),
             Err(why) => {
                 // Rare: read the model again (the core's Part is not cloneable) and let
                 // `open_spec` migrate what it can.
@@ -677,13 +727,27 @@ fn build(
                 let mut fresh = Session(
                     CoreSession::new(shape, analysis, draftwright::model::Spec::default()).map_err(err)?,
                 );
-                if let Err(e) = fresh.open_spec_json(&starting) {
-                    note!("library: saved edits of {id} not restored: {}", e.message);
-                }
-                fresh
+                let migrated = match fresh.open_spec_json(&starting) {
+                    Ok(_) => 1,
+                    Err(e) => {
+                        note!("library: saved edits of {id} not restored: {}", e.message);
+                        0
+                    }
+                };
+                (fresh, migrated)
             }
         };
+        // Below a migration the pin would be the first step undo takes back: only without one.
+        let mut chosen = if edits == 0 { fix_sheet(&mut session) } else { None };
+        if chosen.is_some() {
+            note!("open: paper and scale fixed as chosen, {} ms in", started.elapsed().as_millis());
+        } else if let Some(r) = root {
+            // A drawing reopened with its edits: what Automatic chose for it then.
+            chosen = library::list(r).into_iter().find(|e| e.id == id).and_then(|e| e.chosen_sheet);
+        }
         a.session = Some(session);
+        a.edits = edits;
+        a.chosen = chosen;
         a.name = match &part {
             Some((_, part_name)) => format!("{part_name} · {name}"),
             None => name.clone(),
@@ -709,6 +773,7 @@ fn build(
                 edited: saved.is_some(),
                 part: part.as_ref().map(|p| p.0),
                 part_name: part.map(|p| p.1),
+                chosen_sheet: a.chosen.clone(),
             };
             let mut stored = library::record(root, entry, &bytes)
                 .and_then(|()| library::save_thumbnail(root, &id, &doc.svg, iso_area(a)));
@@ -812,7 +877,9 @@ fn remember(a: &mut Actor, doc: &DocView) {
     };
     let spec = session.spec_json();
     let saved = library::save_spec(root, id, &spec).and_then(|()| {
+        let chosen = a.chosen.clone();
         library::update(root, id, |e| {
+            e.chosen_sheet = chosen;
             e.edited = true;
             e.opened = library::now();
             e.problems = doc.problem_total;
@@ -847,17 +914,36 @@ pub fn set(path: &'static str, value: Value) -> Result<DocView, String> {
 pub fn set_paper(size: Option<String>, exact: bool) -> Result<DocView, String> {
     call(move |a| {
         choose_paper(a, size, exact)?;
+        a.edits += 1;
         finish(a, "paper")
     })
 }
 
 fn choose_paper(a: &mut Actor, size: Option<String>, exact: bool) -> Result<(), String> {
+    let automatic = size.is_none();
     let session = a.session.as_mut().ok_or_else(|| no_session(&a.failed))?;
     session.apply(&paper_ops(size.clone(), true), true).map_err(err)?;
     let overflows = session.0.state().problems.iter().any(|p| OVERFLOW.contains(&p.code.as_str()));
     if size.is_some() && !exact && overflows {
         session.0.undo().map_err(err)?;
         session.apply(&paper_ops(size, false), true).map_err(err)?;
+    }
+    if automatic {
+        // Automatic, then the paper and scale it chose fixed in the same edit (see
+        // [`fix_sheet`]): one undo step, and the next edit does not move the views.
+        let pin = keep_sheet_ops(session, &[]);
+        if !pin.is_empty() {
+            session.0.undo().map_err(err)?;
+            let mut ops = paper_ops(None, false);
+            ops.extend(pin);
+            match session.apply(&ops, true) {
+                Ok(_) => a.chosen = Some(fixed(session)),
+                Err(e) => {
+                    note!("keep sheet: Automatic paper not fixed ({})", e.message);
+                    session.apply(&paper_ops(None, false), true).map_err(err)?;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -932,10 +1018,15 @@ pub fn apply(ops: Vec<Op>) -> Result<DocView, String> {
 pub fn undo() -> Result<DocView, String> {
     call(|a| {
         let session = a.session.as_mut().ok_or_else(|| no_session(&a.failed))?;
+        if a.edits == 0 {
+            // Below the user's edits lies at most the paper and scale fixed on opening.
+            return Err(NOTHING_TO_UNDO.to_string());
+        }
         session
             .0
             .undo()
             .map_err(|_| NOTHING_TO_UNDO.to_string())?;
+        a.edits -= 1;
         finish(a, "undo")
     })
 }
@@ -1030,6 +1121,8 @@ fn view(a: &mut Actor) -> Result<DocView, String> {
     let paper = planned.size.clone();
     let scale = planned.scale.to_string();
     let kept = exact.is_some() && spec.pointer("/sheet/scale").is_some_and(|v| !v.is_null());
+    // The paper and scale Automatic chose, fixed by the app: still Automatic to the user.
+    let as_chosen = kept && preferred.is_none() && a.chosen.as_ref() == Some(&fixed(session));
     let hidden = spec.pointer("/sheet/hidden").and_then(Value::as_bool);
     let units = text("/units").unwrap_or_else(millimetres);
     let shaded = text("/views/iso/style").as_deref() == Some("shaded");
@@ -1166,8 +1259,8 @@ fn view(a: &mut Actor) -> Result<DocView, String> {
         sheets,
         problems,
         problem_total: all.len(),
-        exact: exact.is_some(),
-        size: exact.or(preferred),
+        exact: exact.is_some() && !as_chosen,
+        size: if as_chosen { None } else { exact.or(preferred) },
         paper,
         scale,
         kept,
@@ -1412,6 +1505,8 @@ mod tests {
             bytes: Vec::new(),
             kept: 0,
             failed: None,
+            edits: 0,
+            chosen: None,
         }
     }
 
@@ -1423,6 +1518,8 @@ mod tests {
 
     #[test]
     fn a_chosen_paper_that_fits_is_kept() {
+        // "Keep paper and scale" is one setting for the process: no test turns it off meanwhile.
+        let _one = crate::tests::ONE.lock().unwrap_or_else(|e| e.into_inner());
         let mut a = actor("plate.step", include_bytes!("../assets/plate.step"));
         for exact in [false, true] {
             let (doc, sheet) = choose(&mut a, Some("A3"), exact);
@@ -1430,13 +1527,16 @@ mod tests {
             assert_eq!((sheet["size"].as_str(), sheet.get("preferred_max_size")), (Some("A3"), None));
             assert!(!doc.overflow);
         }
+        // Automatic: the paper and scale it chose are fixed, and the drawing shows as Automatic.
         let (doc, sheet) = choose(&mut a, None, false);
         assert_eq!((doc.size, doc.exact), (None, false));
-        assert_eq!((sheet.get("size"), sheet.get("preferred_max_size")), (None, None));
+        assert_eq!((sheet["size"].as_str(), sheet.get("preferred_max_size")), (Some(doc.paper.as_str()), None));
+        assert_eq!(sheet["scale"].as_str(), Some(doc.scale.as_str()));
     }
 
     #[test]
     fn a_drawing_too_dense_for_its_paper_grows_unless_exact() {
+        let _one = crate::tests::ONE.lock().unwrap_or_else(|e| e.into_inner());
         let bytes = include_bytes!("../tests/fixtures/GRM-02_shaft.step");
         let mut a = actor("GRM-02_shaft.step", bytes);
         let (exact, _) = choose(&mut a, Some("A4"), true);
@@ -1457,6 +1557,60 @@ mod tests {
             eprintln!("the shaft fits an exact A4: the growing branch is not reached");
             assert_eq!((doc.paper.as_str(), doc.exact), ("A4", true));
         }
+    }
+
+    /// The views of the shown sheet: id and page area.
+    fn view_areas(a: &Actor) -> Vec<(String, [f64; 4])> {
+        a.session.as_ref().unwrap().0.plan().views.iter().map(|v| (v.id.clone(), v.area)).collect()
+    }
+
+    #[test]
+    fn a_title_block_edit_leaves_the_views_where_they_are() {
+        let _one = crate::tests::ONE.lock().unwrap_or_else(|e| e.into_inner());
+        for (name, bytes) in [
+            ("GRM-02_shaft.step", &include_bytes!("../tests/fixtures/GRM-02_shaft.step")[..]),
+            ("assembly.step", &include_bytes!("../tests/fixtures/assembly.step")[..]),
+        ] {
+            let mut a = actor(name, bytes);
+            // As a drawing is built: the chosen paper and scale fixed before it is shown.
+            assert!(fix_sheet(a.session.as_mut().unwrap()).is_some(), "{name}: the sheet fixed");
+            view(&mut a).unwrap();
+            let before = view_areas(&a);
+            for (key, value) in [("title", "BRACKET, LONG NAME FOR THE TITLE"), ("material", "AL 6082-T6"), ("drawn_by", "M. S.")] {
+                let op = Op { op: "set".into(), path: format!("sheet/title/{key}"), value: Some(Value::String(value.into())) };
+                edit(&mut a, vec![op], "title").expect("title edit");
+                let after = view_areas(&a);
+                let moved: Vec<_> = before
+                    .iter()
+                    .zip(&after)
+                    .filter(|(b, a)| b.0 != a.0 || b.1.iter().zip(&a.1).any(|(x, y)| (x - y).abs() > 1e-6))
+                    .collect();
+                assert!(moved.is_empty(), "{name}: setting {key} moved {moved:?}");
+            }
+            // Undo takes back the three edits and stops above the fixed sheet.
+            for _ in 0..3 {
+                a.session.as_mut().unwrap().0.undo().unwrap();
+                a.edits -= 1;
+            }
+            assert_eq!(view_areas(&a), before);
+        }
+    }
+
+    #[test]
+    fn automatic_paper_is_fixed_in_the_same_edit() {
+        let _one = crate::tests::ONE.lock().unwrap_or_else(|e| e.into_inner());
+        let bytes = include_bytes!("../tests/fixtures/assembly.step");
+        let mut a = actor("assembly.step", bytes);
+        choose_paper(&mut a, Some("A2".into()), false).unwrap();
+        choose_paper(&mut a, None, false).unwrap();
+        let spec = serde_json::to_value(a.session.as_ref().unwrap().0.spec()).unwrap();
+        let sheet = &a.session.as_ref().unwrap().0.plan().sheet;
+        assert_eq!(spec["sheet"]["size"].as_str(), Some(sheet.size.to_string().as_str()));
+        assert_eq!(spec["sheet"]["scale"].as_str(), Some(sheet.scale.to_string().as_str()));
+        // One undo step back to A2 (it fits, so it is kept exact).
+        a.session.as_mut().unwrap().0.undo().unwrap();
+        let spec = serde_json::to_value(a.session.as_ref().unwrap().0.spec()).unwrap();
+        assert_eq!((spec["sheet"]["size"].as_str(), spec["sheet"]["scale"].as_str()), (Some("A2"), None));
     }
 
     #[test]

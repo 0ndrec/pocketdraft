@@ -666,7 +666,7 @@ mod tests {
     use super::*;
 
     /// The tests share the one engine thread and its open drawing: one at a time.
-    static ONE: Mutex<()> = Mutex::new(());
+    pub(crate) static ONE: Mutex<()> = Mutex::new(());
 
     #[test]
     fn an_assembly_offers_the_cores_fixes() {
@@ -897,30 +897,36 @@ mod tests {
         }
         let bytes = include_bytes!("../tests/fixtures/assembly.step").to_vec();
         let d = open_file("assembly.step".into(), bytes, None, None).expect("open");
-        assert!(!d.kept && d.size.is_none());
+        // Opened with the paper and scale Automatic chose already fixed, shown as Automatic.
+        assert!(d.kept && d.size.is_none() && !d.exact);
         let (paper, scale) = (d.paper.clone(), d.scale.clone());
+        // Nothing of the user's to undo.
+        assert!(matches!(undo(), Err(DwError::NothingToUndo)));
 
         // An edit keeps the sheet as it was laid out: same paper, same scale.
         let item = d.items.iter().find(|i| i.kind == "dimension").unwrap().clone();
         let d = edit_item(item, "±0.1".into(), String::new(), String::new(), String::new()).expect("edit");
-        assert!(d.kept, "the sheet is kept");
-        assert_eq!((d.paper.as_str(), d.scale.as_str(), d.size.as_deref()), (paper.as_str(), scale.as_str(), Some(paper.as_str())));
-        // Undo takes the edit back with the kept sheet.
+        assert!(d.kept && d.size.is_none());
+        assert_eq!((d.paper.as_str(), d.scale.as_str()), (paper.as_str(), scale.as_str()));
+        // Undo takes the edit back, and no further.
         let d = undo().expect("undo");
-        assert!(!d.kept && d.size.is_none());
+        assert!(d.kept && d.size.is_none());
+        assert!(matches!(undo(), Err(DwError::NothingToUndo)));
 
         // Another paper takes its own scale; the next edit keeps it.
         let d = set_paper(Some("A3".into()), true).expect("A3");
-        assert!(!d.kept, "the core chose the scale for A3");
+        assert!(!d.kept && d.size.as_deref() == Some("A3"), "the core chose the scale for A3");
         let d = set_hidden(Some(false)).expect("hidden");
-        assert!(d.kept && d.paper == "A3");
-        // Automatic lays it out again.
+        assert!(d.kept && d.paper == "A3" && d.size.as_deref() == Some("A3"));
+        // Automatic lays it out again, fixed as it is chosen.
         let d = set_paper(None, false).expect("automatic");
-        assert!(!d.kept && d.size.is_none());
+        assert!(d.kept && d.size.is_none());
 
-        // Off: edits leave the choice to the core.
+        // Off: Automatic and edits leave the choice to the core.
         set_keep_sheet(false).expect("off");
         assert!(!keep_sheet());
+        let d = set_paper(None, false).expect("automatic");
+        assert!(!d.kept && d.size.is_none());
         let d = set_hidden(Some(true)).expect("hidden");
         assert!(!d.kept && d.size.is_none());
         set_keep_sheet(true).expect("on");

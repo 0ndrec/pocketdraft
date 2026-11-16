@@ -101,6 +101,10 @@ pub struct Entry {
     pub part: Option<usize>,
     #[serde(default)]
     pub part_name: Option<String>,
+    /// The paper and scale Automatic chose, which the app gave the core as fixed: the
+    /// drawing still shows as Automatic while its Spec holds exactly these.
+    #[serde(default)]
+    pub chosen_sheet: Option<(String, String)>,
 }
 
 impl Entry {
@@ -486,6 +490,7 @@ mod tests {
             edited: false,
             part: None,
             part_name: None,
+            chosen_sheet: None,
         }
     }
 

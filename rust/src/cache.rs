@@ -445,6 +445,7 @@ mod tests {
                 edited: false,
                 part: None,
                 part_name: None,
+                chosen_sheet: None,
             };
             library::record(&root, entry, b"x").unwrap();
             let d = writable_dir(&root, id).unwrap();

@@ -124,6 +124,18 @@ stage ends. A stage's time varies several times over between models of the same 
 (curved faces cost more), and the learnt rates average every open. An open whose sheet
 comes from the cache shows the sheet at once and no card.
 
+**The sheet is fixed before it is shown.** The core lays a sheet out differently when the
+same paper and scale are given rather than chosen: on the test models the views moved by
+5–30 mm, and the scale could change when only the paper was given. So with "Keep paper and
+scale" on, `engine::fix_sheet` gives the core the paper and scale it chose as soon as a
+drawing is built and after Automatic paper (in the same edit), and the drawing is first
+shown that way; a title-block field or any other edit then leaves the views where they
+are. The pin is one step at the bottom of the session's history that is not the user's:
+`Actor::edits` counts the user's steps and undo stops when it reaches 0. The paper and
+scale Automatic chose are remembered (`Actor::chosen`, `Entry::chosen_sheet`), and a Spec
+giving exactly these shows as Automatic in the paper menu. It costs one more plan with a
+fixed sheet on a first open (the tripod model on the emulator: about 4 s).
+
 ## Adding a feature
 
 A typical feature (say, a new setting for the drawing) touches four places, in this order:
