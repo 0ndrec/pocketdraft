@@ -166,7 +166,7 @@ can never reach a core that lacks the Spec key.
 
 ### draftwright 0.6 (branch `dev`)
 
-The `dev` branch builds on draftwright 0.6.0-alpha.2 (`https://github.com/pzfreo/draftwright`,
+The `dev` branch builds on draftwright 0.6.0-alpha.3 (`https://github.com/pzfreo/draftwright`,
 the repository's new name), still unmodified. What the move took:
 
 - `core_features()` lists the ANSI and ARCH families, `"in"`, and `shaded: true`; the
@@ -176,9 +176,15 @@ the repository's new name), still unmodified. What the move took:
   `uncredit` clears all three.
 - The cache needed no new `FORMAT`: its key holds the core's `ENGINE_VERSION`.
 - Tests: 0.6 offers a local fix that keeps the layout on the shaft model, not the assembly.
+- alpha.3 groups problems as *fix before printing*, *tidy* and *information*
+  (`Problem::labels().tier`): `Problem.tier` carries the group, the list is sorted by it,
+  and the problems sheet shows a heading for each.
+- alpha.3 prefers the smaller sheet: the shaft now fits an exact A4, so no fixture reaches
+  the branch where a preferred paper grows (`a_drawing_too_dense_for_its_paper_grows_unless_exact`
+  checks whichever branch the core takes).
 
 Known differences, from the core: a first open of a large model is slower (vent_lid on the
-emulator: 29.4 s against 20.5 s), edits are as fast or faster (hidden lines 3.8 s), GD&T
+emulator: 29.4 s against 20.5 s on alpha.2, 41 s on alpha.3), edits are as fast or faster (hidden lines 3.8 s), GD&T
 frames grew to CAD size (pzfreo/draftwright#452), and STEP face numbers may change (datums
 are stored by side, so saved drawings keep them).
 

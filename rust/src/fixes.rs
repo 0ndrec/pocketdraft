@@ -357,6 +357,7 @@ mod tests {
         ProblemRow {
             key: "0".into(),
             severity: "warning".into(),
+            tier: "tidy".into(),
             code: code.into(),
             message: String::new(),
             refs: refs.iter().map(|s| s.to_string()).collect(),

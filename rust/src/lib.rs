@@ -124,6 +124,8 @@ pub struct PaperFamily {
 pub struct Problem {
     pub key: String,
     pub severity: String,
+    /// The core's group: `fix_before_printing`, `tidy` or `information`.
+    pub tier: String,
     pub code: String,
     pub message: String,
     /// A short heading for the code ("Label runs off the sheet").
@@ -252,6 +254,7 @@ fn doc(d: engine::DocView) -> Doc {
             .map(|p| Problem {
                 key: p.key.clone(),
                 severity: p.severity.clone(),
+                tier: p.tier.clone(),
                 code: p.code.clone(),
                 message: p.message.clone(),
                 headline: fixes::headline(&p.code),
@@ -673,6 +676,14 @@ mod tests {
         let with_fixes: Vec<_> = d.problems.iter().filter(|p| !p.fixes.is_empty()).map(|p| p.code.clone()).collect();
         eprintln!("{} problems, fixes on {:?}", d.problems.len(), with_fixes);
         assert!(with_fixes.len() > 1, "{with_fixes:?}");
+        // Every problem carries one of the core's groups, and the list keeps their order.
+        let order = ["fix_before_printing", "tidy", "information"];
+        let ranks: Vec<usize> = d
+            .problems
+            .iter()
+            .map(|p| order.iter().position(|t| *t == p.tier).unwrap_or_else(|| panic!("tier {:?}", p.tier)))
+            .collect();
+        assert!(ranks.windows(2).all(|w| w[0] <= w[1]), "{ranks:?}");
     }
 
     #[test]

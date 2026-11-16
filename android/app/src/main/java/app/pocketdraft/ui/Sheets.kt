@@ -68,12 +68,33 @@ fun ProblemsSheet(vm: AppViewModel, doc: Doc) {
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
         LazyColumn(Modifier.fillMaxWidth().imePadding()) {
-            items(doc.problems, key = { it.key }) { p ->
-                ProblemRow(vm, p, expanded == p.key) { expanded = if (expanded == p.key) null else p.key }
+            // The core's groups, in its order; a core without them gives one plain list.
+            doc.problems.groupBy { it.tier }.forEach { (tier, rows) ->
+                tierName(tier)?.let { name ->
+                    item(key = "tier:$tier") {
+                        Text(
+                            "$name · ${rows.size}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+                        )
+                    }
+                }
+                items(rows, key = { it.key }) { p ->
+                    ProblemRow(vm, p, expanded == p.key) { expanded = if (expanded == p.key) null else p.key }
+                }
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+}
+
+/** The heading of one of the core's groups of problems, or `null` for none. */
+private fun tierName(tier: String): String? = when (tier) {
+    "fix_before_printing" -> "Fix before printing"
+    "tidy" -> "Tidy"
+    "information" -> "Information"
+    else -> null
 }
 
 @Composable
