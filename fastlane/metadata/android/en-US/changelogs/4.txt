@@ -1,0 +1,1 @@
+Easier to use: labelled tools, a full-screen drawing, editors whose Apply stays above the keyboard and applies from it, fits only for diameters, current title-block values shown, problems of one kind folded together with fixable ones marked, a warning when a fix adds problems, Undo off when there is nothing to undo, and an About section.

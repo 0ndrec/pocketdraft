@@ -2,7 +2,7 @@
 # UniFFI bindings (Kotlin), built with cargo-ndk. See ../README.md.
 [package]
 name = "draftwright-ffi"
-version = "0.3.0-alpha.1"
+version = "0.3.0-alpha.2"
 edition = "2024"
 license = "AGPL-3.0-only"
 publish = false

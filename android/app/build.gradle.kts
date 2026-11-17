@@ -26,8 +26,8 @@ android {
         applicationId = property("appId") as String
         minSdk = minApi
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0-alpha.1"
+        versionCode = 4
+        versionName = "0.3.0-alpha.2"
         ndk { abiFilters += abi }
     }
 
