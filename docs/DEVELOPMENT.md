@@ -178,8 +178,9 @@ can never reach a core that lacks the Spec key.
 
 ### draftwright 0.6 (branch `dev`)
 
-The `dev` branch builds on draftwright 0.6.0-alpha.3 (`https://github.com/pzfreo/draftwright`,
-the repository's new name), still unmodified. What the move took:
+The `dev` branch builds on draftwright 0.6.0 (`https://github.com/pzfreo/draftwright`,
+the repository's new name), still unmodified. The move from alpha.3 to the release needed
+no code change. What the move to 0.6 took:
 
 - `core_features()` lists the ANSI and ARCH families, `"in"`, and `shaded: true`; the
   drawing's `units` and `shaded` come from the Spec (`/units`, `/views/iso/style`).
@@ -196,9 +197,15 @@ the repository's new name), still unmodified. What the move took:
   checks whichever branch the core takes).
 
 Known differences, from the core: a first open of a large model is slower (vent_lid on the
-emulator: 29.4 s against 20.5 s on alpha.2, 41 s on alpha.3), edits are as fast or faster (hidden lines 3.8 s), GD&T
+emulator: 29.4 s against 20.5 s on alpha.2, 41 s on alpha.3, 33 s on 0.6.0), edits are as
+fast or faster (hidden lines 3.8 s; a title edit 3.4 s on 0.6.0), GD&T
 frames grew to CAD size (pzfreo/draftwright#452), and STEP face numbers may change (datums
 are stored by side, so saved drawings keep them).
+
+0.6.0 adds `Session::apply_incremental`, which places changed annotations around the
+committed layout without re-picking paper, scale or view frames, and saves its placements
+as engine pins in the Spec. The app does not use it yet: edits still go through `apply`,
+with the paper and scale fixed on opening (see "The sheet is fixed before it is shown").
 
 ## Testing
 

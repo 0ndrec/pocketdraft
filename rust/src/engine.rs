@@ -1552,7 +1552,7 @@ mod tests {
             a.session.as_mut().unwrap().0.undo().unwrap();
             assert!(view(&mut a).unwrap().exact);
         } else {
-            // draftwright 0.6.0-alpha.3 fits the shaft on A4 (none of the fixtures runs off
+            // draftwright 0.6 (from alpha.3) fits the shaft on A4 (none of the fixtures runs off
             // it any more): a chosen paper that fits is kept as it is.
             eprintln!("the shaft fits an exact A4: the growing branch is not reached");
             assert_eq!((doc.paper.as_str(), doc.exact), ("A4", true));
