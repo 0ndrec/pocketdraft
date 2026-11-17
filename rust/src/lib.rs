@@ -68,6 +68,8 @@ pub struct Doc {
     pub sheets: Vec<u32>,
     pub problems: Vec<Problem>,
     pub problem_total: u64,
+    /// Undo has an edit to take back.
+    pub can_undo: bool,
     pub size: Option<String>,
     pub exact: bool,
     pub paper: String,
@@ -282,6 +284,7 @@ fn doc(d: engine::DocView) -> Doc {
         sheet: d.sheet,
         sheets: d.sheets,
         problem_total: d.problem_total as u64,
+        can_undo: d.can_undo,
         size: d.size,
         exact: d.exact,
         paper: d.paper,
@@ -542,8 +545,9 @@ pub fn item_fields(kind: String) -> Vec<Field> {
         fields.push(field(&fixes::TOLERANCE));
         fields.push(field(&fixes::FIT));
     }
-    fields.push(field(&fixes::SUFFIX));
+    // In reading order: text before the value, then after it.
     fields.push(field(&fixes::PREFIX));
+    fields.push(field(&fixes::SUFFIX));
     fields
 }
 

@@ -48,7 +48,15 @@ fun OpeningCard(p: Progress, modifier: Modifier = Modifier) {
             if (p.detail.isNotEmpty()) {
                 Text(p.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            val fraction = p.fraction
+            // The share is an estimate: once it runs out, the bar no longer pretends to know.
+            val fraction = p.fraction?.takeIf { it < 0.95f }
+            if (p.fraction != null && fraction == null) {
+                Text(
+                    "Taking longer than usual for this phone",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (fraction == null) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             } else {

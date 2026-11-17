@@ -105,7 +105,7 @@ pub const PREFIX: Field = Field {
     key: "dim:prefix",
     label: "Before",
     hint: "Text printed before the value.",
-    suggestions: &["2×", "SR", "~"],
+    suggestions: &["SR", "~"],
 };
 pub const SUFFIX: Field = Field {
     key: "dim:suffix",

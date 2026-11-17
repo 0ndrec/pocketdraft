@@ -90,6 +90,10 @@ fun SettingsScreen(vm: AppViewModel) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Heading("About")
+            About()
         }
     }
 }
@@ -112,5 +116,35 @@ private fun Toggle(title: String, about: String, on: Boolean, toggle: () -> Unit
         headlineContent = { Text(title) },
         supportingContent = { Text(about) },
         trailingContent = { Switch(checked = on, onCheckedChange = { toggle() }) },
+    )
+}
+
+private const val SOURCE = "https://github.com/0ndrec/pocketdraft"
+private const val CORE = "https://github.com/pzfreo/draftwright"
+
+/**
+ * The app's version, licence and source. The AGPL asks that users can get the source of the
+ * program they run: the link is here for that.
+ */
+@Composable
+private fun About() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+    }
+    ListItem(
+        headlineContent = { Text("Pocketdraft $version") },
+        supportingContent = { Text("Free software under the GNU AGPL 3.0. No account, no network: everything is computed on this phone.") },
+    )
+    ListItem(
+        modifier = Modifier.clickableRow { uri.openUri(SOURCE) },
+        headlineContent = { Text("Source code") },
+        supportingContent = { Text(SOURCE.removePrefix("https://")) },
+    )
+    ListItem(
+        modifier = Modifier.clickableRow { uri.openUri(CORE) },
+        headlineContent = { Text("Drawing core: draftwright") },
+        supportingContent = { Text("Used as released and unmodified; not affiliated with its author.") },
     )
 }

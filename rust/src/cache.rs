@@ -394,6 +394,7 @@ mod tests {
             sheets: vec![1],
             problems: Vec::new(),
             problem_total: 0,
+            can_undo: false,
             size: None,
             exact: false,
             paper: "A4".into(),

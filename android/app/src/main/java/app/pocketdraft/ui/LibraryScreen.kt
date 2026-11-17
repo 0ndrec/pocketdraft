@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Architecture
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Settings
@@ -83,13 +84,8 @@ fun LibraryScreen(vm: AppViewModel) {
             }
             vm.opening?.let { OpeningCard(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             if (vm.entries.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Open a STEP file to make its drawing. Drawings you open stay here with their edits.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // The first drawing being made: its progress card says enough.
+                if (vm.opening == null) EmptyLibrary()
             } else {
                 LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp)) {
                     items(vm.entries, key = { it.id }) { entry -> EntryRow(vm, entry) }
@@ -149,5 +145,30 @@ private fun Thumbnail(svg: String?) {
                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
             )
         }
+    }
+}
+
+/** No drawings yet: what the app does and where to start. */
+@Composable
+private fun EmptyLibrary() {
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Outlined.Architecture,
+            null,
+            Modifier.padding(bottom = 16.dp).size(64.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Text("No drawings yet", style = MaterialTheme.typography.titleLarge)
+        Text(
+            "Open a STEP model (.step, .stp) and Pocketdraft lays out its views, dimensions and title block. Drawings stay here with their edits.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }

@@ -10,6 +10,7 @@ import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -47,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -69,7 +74,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -109,12 +117,15 @@ fun DrawingScreen(vm: AppViewModel) {
         when {
             vm.selected != null -> vm.selected = null
             vm.showProblems -> vm.showProblems = false
+            vm.fullScreen -> vm.fullScreen = false
             else -> vm.close()
         }
     }
+    // Full screen: the sheet alone, with one button back to the bars.
+    val full = vm.fullScreen && doc != null
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!full) TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = vm::close) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
@@ -129,8 +140,14 @@ fun DrawingScreen(vm: AppViewModel) {
                     }
                 },
                 actions = {
+                    Tool("Full screen") {
+                        IconButton(enabled = doc != null, onClick = { vm.selected = null; vm.fullScreen = true }) {
+                            Icon(Icons.Filled.Fullscreen, "Full screen")
+                        }
+                    }
                     Tool("Undo") {
-                        IconButton(onClick = vm::undo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
+                        // Off with nothing to take back (as after reopening: the history is the session's).
+                        IconButton(enabled = doc?.canUndo == true, onClick = vm::undo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
                     }
                     More(vm, onSaveDxf = {
                         // The core writes one sheet per DXF: name the sheet when there are several.
@@ -141,7 +158,7 @@ fun DrawingScreen(vm: AppViewModel) {
             )
         },
         bottomBar = {
-            Tools(vm, onSavePdf = { savePdf.launch("$base.pdf") })
+            if (!full) Tools(vm, onSavePdf = { savePdf.launch("$base.pdf") })
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
@@ -153,6 +170,15 @@ fun DrawingScreen(vm: AppViewModel) {
                 vm.opening?.let { OpeningCard(it, Modifier.align(Alignment.TopCenter).padding(16.dp)) }
                 if (doc != null && doc.sheets.size > 1) {
                     SheetSwitcher(vm, doc, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+                }
+                if (full) {
+                    Box(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                        Tool("Leave full screen") {
+                            FilledTonalIconButton(onClick = { vm.fullScreen = false }) {
+                                Icon(Icons.Filled.FullscreenExit, "Leave full screen")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -261,6 +287,39 @@ private fun unitName(units: String) = when (units) {
     else -> units
 }
 
+/**
+ * A tool of the bottom bar: its icon over a short label (Material 3 navigation style), with an
+ * optional badge on the icon.
+ */
+@Composable
+private fun BarAction(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    badge: (@Composable () -> Unit)? = null,
+) {
+    val tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    Column(
+        Modifier
+            .width(76.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BadgedBox(badge = { badge?.invoke() }) { Icon(icon, label, tint = tint) }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
 /** A long press on an icon-only control names it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -284,20 +343,12 @@ private fun Tools(vm: AppViewModel, onSavePdf: () -> Unit) {
     val open = doc != null
     BottomAppBar(
         actions = {
-            Tool("Problems") {
-                IconButton(enabled = open, onClick = { vm.selected = null; vm.showProblems = true }) {
-                    val total = doc?.problemTotal?.toInt() ?: 0
-                    BadgedBox(badge = { if (total > 0) Badge { Text(if (total > 99) "99+" else "$total") } }) {
-                        Icon(Icons.Outlined.ReportProblem, "Problems")
-                    }
-                }
+            val total = doc?.problemTotal?.toInt() ?: 0
+            BarAction("Problems", Icons.Outlined.ReportProblem, open, onClick = { vm.selected = null; vm.showProblems = true }) {
+                if (total > 0) Badge { Text(if (total > 99) "99+" else "$total") }
             }
             SizeTool(vm)
-            Tool("Title block") {
-                IconButton(enabled = open, onClick = { vm.showProblems = false; vm.selected = TITLE + "title" }) {
-                    Icon(Icons.Outlined.EditNote, "Title block")
-                }
-            }
+            BarAction("Title block", Icons.Outlined.EditNote, open, onClick = { vm.showProblems = false; vm.selected = TITLE + "title" })
         },
         floatingActionButton = {
             Tool("Save PDF") {
@@ -317,17 +368,11 @@ private fun SizeTool(vm: AppViewModel) {
     val doc = vm.doc
     var open by remember { mutableStateOf(false) }
     Box {
-        Tool("Paper size") {
-            IconButton(enabled = doc != null, onClick = { open = true }) {
-                // A padlock on the icon while the drawing keeps its paper and scale.
-                BadgedBox(badge = {
-                    if (doc?.kept == true) {
-                        Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
-                            Icon(Icons.Filled.Lock, null, Modifier.size(10.dp))
-                        }
-                    }
-                }) {
-                    Icon(Icons.Outlined.AspectRatio, "Paper size")
+        // The label names the paper; a padlock while the drawing keeps its paper and scale.
+        BarAction(doc?.paper?.takeIf { it.isNotEmpty() } ?: "Paper", Icons.Outlined.AspectRatio, doc != null, onClick = { open = true }) {
+            if (doc?.kept == true) {
+                Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                    Icon(Icons.Filled.Lock, null, Modifier.size(10.dp))
                 }
             }
         }

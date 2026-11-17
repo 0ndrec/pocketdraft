@@ -44,6 +44,10 @@ pub struct DocView {
     pub sheets: Vec<u32>,
     pub problems: Vec<ProblemRow>,
     pub problem_total: usize,
+    /// Undo has an edit of the user's to take back (none after reopening: the history is
+    /// the session's).
+    #[serde(default)]
+    pub can_undo: bool,
     /// Paper the user chose (`None`: chosen automatically): exact (`sheet/size`) or
     /// preferred (`sheet/preferred_max_size`, larger paper when the drawing does not fit).
     pub size: Option<String>,
@@ -1259,6 +1263,7 @@ fn view(a: &mut Actor) -> Result<DocView, String> {
         sheets,
         problems,
         problem_total: all.len(),
+        can_undo: a.edits > 0,
         exact: exact.is_some() && !as_chosen,
         size: if as_chosen { None } else { exact.or(preferred) },
         paper,

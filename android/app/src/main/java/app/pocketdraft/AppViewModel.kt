@@ -103,6 +103,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var showProblems by mutableStateOf(false)
     var showDatums by mutableStateOf(false)
     var showRemoved by mutableStateOf(false)
+    /** The sheet alone on the screen, without the bars. */
+    var fullScreen by mutableStateOf(false)
     /** The message is about an edit: its snackbar offers Undo. */
     var messageUndo by mutableStateOf(false)
 
@@ -240,6 +242,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         showProblems = false
         showDatums = false
         showRemoved = false
+        fullScreen = false
         doc = null
         refresh()
     }
@@ -340,7 +343,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun restoreDimension(id: String) =
         run("Laying out the sheet…", then = { d -> if (d.removed.isEmpty()) showRemoved = false }) { coreRestoreDimension(id) }
 
-    fun fix(opsJson: String) = run("Applying the fix…", then = { showProblems = false }) { applyOps(opsJson) }
+    /**
+     * Apply one of the core's ready fixes. A fix that leaves more problems than it found says
+     * so, with Undo beside it: some move an item somewhere worse.
+     */
+    fun fix(opsJson: String) {
+        val before = doc?.problemTotal ?: 0u
+        run("Applying the fix…", then = { d ->
+            showProblems = false
+            if (d.problemTotal > before) {
+                val more = d.problemTotal - before
+                message = "This fix left $more more problem${if (more == 1uL) "" else "s"} than before"
+                messageUndo = true
+            }
+        }) { applyOps(opsJson) }
+    }
 
     fun answer(problemKey: String, value: String) =
         run("Applying…", then = { showProblems = false }) { answerProblem(problemKey, value) }
