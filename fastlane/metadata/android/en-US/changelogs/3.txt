@@ -1,0 +1,1 @@
+Built on draftwright 0.6.0: inch drawings, ANSI and ARCH paper, a shaded isometric view. Opening a large model shows its progress. Views no longer shift after title-block edits. Problems are grouped by what needs fixing first.

@@ -35,6 +35,7 @@ permissions.
   - a face of the part: make it a datum (A, B, C…);
   - a title-block cell: fill it in.
 - **Datums and origins**: choose which faces are datums and where dimensions are measured from.
+- **Millimetres or inches**, on ISO, ANSI or ARCH paper, with a line or shaded isometric view.
 - **Paper**: automatic, or a size you choose; "Keep paper and scale" keeps edits fast on
   large parts.
 - **PDF export** of every sheet, with embedded fonts, and **DXF** of a sheet for a CAD program.
