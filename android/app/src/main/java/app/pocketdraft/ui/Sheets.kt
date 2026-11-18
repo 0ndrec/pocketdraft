@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -223,11 +224,22 @@ private fun Suggestions(field: Field, onPick: (String) -> Unit) {
  * sight while the keyboard covers the lower part of the sheet.
  */
 @Composable
-private fun EditorHeader(title: String, onCancel: () -> Unit, onApply: () -> Unit, applyEnabled: Boolean = true) {
+private fun EditorHeader(title: String, onCancel: () -> Unit, onApply: () -> Unit, applyEnabled: Boolean = true, error: String? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         TextButton(onClick = onCancel) { Text("Cancel") }
         Button(enabled = applyEnabled, onClick = onApply) { Text("Apply") }
+    }
+    // A refusal of the values: the editor stays open with them, to be corrected.
+    if (error != null) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
+            Text(
+                error,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+            )
+        }
     }
 }
 
@@ -289,8 +301,8 @@ fun ItemSheet(vm: AppViewModel, item: Item) {
         }
     }
     ModalBottomSheet(onDismissRequest = { vm.selected = null }) {
-        Column(Modifier.padding(horizontal = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            EditorHeader(item.title, onCancel = { vm.selected = null }, onApply = apply, applyEnabled = invalid == null)
+        Column(Modifier.padding(horizontal = 24.dp).imePadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            EditorHeader(item.title, onCancel = { vm.selected = null }, onApply = apply, applyEnabled = invalid == null, error = vm.editError)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 fields.forEach { f -> FilterChip(selected = active == f.key, onClick = { active = f.key }, label = { Text(f.label) }) }
             }
@@ -368,8 +380,8 @@ fun TitleSheet(vm: AppViewModel, doc: Doc, startKey: String) {
         if (changes.isEmpty()) vm.selected = null else vm.titles(changes)
     }
     ModalBottomSheet(onDismissRequest = { vm.selected = null }) {
-        Column(Modifier.padding(horizontal = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            EditorHeader("Title block", onCancel = { vm.selected = null }, onApply = apply)
+        Column(Modifier.padding(horizontal = 24.dp).imePadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            EditorHeader("Title block", onCancel = { vm.selected = null }, onApply = apply, error = vm.editError)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 fields.forEach { f ->
                     // A dot on the fields the user has filled.

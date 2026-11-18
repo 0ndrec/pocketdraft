@@ -421,6 +421,8 @@ pub fn remove(root: &Path, id: &str) -> io::Result<()> {
     let mut entries = list(root);
     entries.retain(|e| e.id != id);
     write_index(root, &entries)?;
+    // Not while a cache of the entry is being written (see `cache::WRITES`).
+    let _held = crate::cache::WRITES.lock().unwrap_or_else(|e| e.into_inner());
     match fs::remove_dir_all(root.join(id)) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),

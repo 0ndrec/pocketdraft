@@ -632,7 +632,7 @@ pub fn set_units(units: String) -> Answer<Doc> {
     if !core_features().units.contains(&units) {
         return Err(unsupported(&format!("“{units}” units")));
     }
-    answer(engine::set("units", serde_json::Value::String(units)))
+    answer(engine::set_units(units))
 }
 
 /// The isometric view shaded or as lines.
@@ -968,6 +968,31 @@ mod tests {
         assert!(dxf().expect("dxf").len() > 1000);
         let d = set_shaded(false).expect("lines");
         assert!(!d.shaded);
+    }
+
+    #[test]
+    fn units_switch_both_ways_with_tolerances_and_a_kept_paper() {
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("dw-ffi-units-back-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.to_string_lossy().into_owned());
+        set_keep_sheet(true).expect("keep sheet");
+        let bytes = include_bytes!("../tests/fixtures/assembly.step").to_vec();
+        let d = open_file("assembly.step".into(), bytes, None, None).expect("open");
+        let dim = d.items.iter().find(|i| i.kind == "dimension").expect("a dimension").clone();
+        let d = edit_item(dim.clone(), "±0.1".into(), String::new(), String::new(), String::new()).expect("tolerance");
+        let paper = d.paper.clone();
+        let tol = |d: &Doc| d.items.iter().find(|i| i.id == dim.id).and_then(|i| i.tolerance.clone());
+
+        let d = set_units("in".into()).expect("inches");
+        assert_eq!(d.units, "in");
+        assert_eq!(tol(&d).as_deref(), Some("±0.004"), "written in inches");
+        let d = set_units("mm".into()).expect("back to millimetres with the scale kept");
+        assert_eq!(d.units, "mm");
+        assert_eq!(tol(&d).as_deref(), Some("±0.1"));
+        assert_eq!(d.paper, paper, "a paper the core chose is chosen again for the same drawing");
+        let d = undo().expect("one undo step");
+        assert_eq!(d.units, "in");
     }
 
     #[test]

@@ -75,6 +75,19 @@ fn fingerprint() -> String {
     format!("{FORMAT} {}", draftwright::stateless::ENGINE_VERSION)
 }
 
+/// Held while a background thread writes a cache, and while an entry is removed: a removal
+/// that ran into a write failed ("directory not empty"), and a write after a removal brought
+/// the entry's folder back.
+pub(crate) static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Run a background write under [`WRITES`], unless the entry has been removed meanwhile.
+fn locked_write(root: &Path, id: &str, write: impl FnOnce()) {
+    let _held = WRITES.lock().unwrap_or_else(|e| e.into_inner());
+    if root.join(id).exists() {
+        write();
+    }
+}
+
 fn dir(root: &Path, id: &str) -> PathBuf {
     root.join(id).join(DIR)
 }
@@ -204,17 +217,19 @@ pub fn keep_projections(root: &Path, id: &str, projections: &Projections) {
     let (root, owned) = (root.to_path_buf(), id.to_string());
     let write = move || {
         let id = owned;
-        let kept = gz(&json).and_then(|packed| {
-            if packed.len() as u64 > ENTRY_MAX {
-                return Ok(());
+        locked_write(&root, &id, || {
+            let kept = gz(&json).and_then(|packed| {
+                if packed.len() as u64 > ENTRY_MAX {
+                    return Ok(());
+                }
+                let dir = writable_dir(&root, &id)?;
+                write_atomic(&dir.join(PROJECTIONS), &packed)
+            });
+            if let Err(e) = kept {
+                note!("cache: could not keep the projections of {id}: {e}");
             }
-            let dir = writable_dir(&root, &id)?;
-            write_atomic(&dir.join(PROJECTIONS), &packed)
+            trim(&root, &id, TOTAL_MAX);
         });
-        if let Err(e) = kept {
-            note!("cache: could not keep the projections of {id}: {e}");
-        }
-        trim(&root, &id, TOTAL_MAX);
     };
     if std::thread::Builder::new().name("draftwright-cache".into()).spawn(write).is_err() {
         note!("cache: no thread to write the projections of {id}");
@@ -262,10 +277,12 @@ pub fn keep_sheet(root: &Path, id: &str, spec_json: &str, doc: &DocView) {
     let (root, owned) = (root.to_path_buf(), id.to_string());
     let write = move || {
         let id = owned;
-        let kept = gz(&json).and_then(|packed| write_atomic(&writable_dir(&root, &id)?.join(SHEET), &packed));
-        if let Err(e) = kept {
-            note!("cache: could not keep the sheet of {id}: {e}");
-        }
+        locked_write(&root, &id, || {
+            let kept = gz(&json).and_then(|packed| write_atomic(&writable_dir(&root, &id)?.join(SHEET), &packed));
+            if let Err(e) = kept {
+                note!("cache: could not keep the sheet of {id}: {e}");
+            }
+        });
     };
     if std::thread::Builder::new().name("draftwright-cache".into()).spawn(write).is_err() {
         note!("cache: no thread to write the sheet of {id}");
@@ -414,6 +431,7 @@ mod tests {
             origins: Default::default(),
             uncited_datums: false,
         };
+        fs::create_dir_all(root.join("abcd")).unwrap(); // the library entry's folder
         keep_sheet(&root, "abcd", r#"{"sheet":{}}"#, &doc);
         let path = dir(&root, "abcd").join(SHEET);
         for _ in 0..100 {

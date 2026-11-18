@@ -108,7 +108,9 @@ fun DrawingScreen(vm: AppViewModel) {
     val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         uri?.let { vm.savePdf(context.contentResolver, it) }
     }
-    val saveDxf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/dxf")) { uri ->
+    // Android knows no MIME type for .dxf: under a made-up one the provider drops the
+    // extension from a renamed copy ("name.dxf (1)"); as plain bytes it keeps the name's own.
+    val saveDxf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         uri?.let { vm.saveDxf(context.contentResolver, it) }
     }
     // The file name: the model's, without the part after " · " or the extension.

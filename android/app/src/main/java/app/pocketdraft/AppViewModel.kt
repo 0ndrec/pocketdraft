@@ -20,6 +20,7 @@ import uniffi.draftwright_ffi.Doc
 import uniffi.draftwright_ffi.DwException
 import uniffi.draftwright_ffi.Entry
 import uniffi.draftwright_ffi.Item
+import uniffi.draftwright_ffi.titleFields
 import uniffi.draftwright_ffi.PartRow
 import uniffi.draftwright_ffi.Progress
 import uniffi.draftwright_ffi.openingProgress
@@ -64,6 +65,26 @@ fun DwException.text(): String = when (this) {
     is DwException.NothingToUndo -> "Nothing to undo"
 }
 
+/**
+ * A refusal in the user's words: the core names items by their ids and Spec paths
+ * (`d:envelope/width.length`, `sheet/title/tolerance`); the drawing shows labels.
+ */
+private fun DwException.text(doc: Doc?): String {
+    var t = text()
+    doc?.items?.sortedByDescending { it.id.length }?.forEach { i ->
+        val name = i.label.trim().ifEmpty { return@forEach }
+        for (id in listOf(i.id, i.id.replace("/", "~1"))) {
+            // Quoted by the core or not: one pair of quotes around the label.
+            t = t.replace("\"$id\"", "\u201c$name\u201d").replace(id, "\u201c$name\u201d")
+        }
+    }
+    titleFields().forEach { f -> t = t.replace("sheet/title/${f.key}", "the ${f.label.lowercase()}") }
+    t = Regex("""dimensions/(\u201c[^\u201d]*\u201d)/([a-z_]+)""").replace(t) { m -> "the ${m.groupValues[2].replace('_', ' ')} of ${m.groupValues[1]}" }
+    // Ids of items not on this sheet.
+    t = Regex("""(?:dimensions/)?\bd:[A-Za-z0-9_.~/:-]*[A-Za-z0-9_]""").replace(t, "a dimension")
+    return t
+}
+
 /** A STEP assembly waiting for the user to pick a part (or the whole file). */
 data class Picking(val name: String, val bytes: ByteArray, val parts: List<PartRow>)
 
@@ -99,7 +120,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var picking by mutableStateOf<Picking?>(null)
         private set
     /** The item picked on the drawing (`title:<key>` for the title block), or `null`. */
-    var selected by mutableStateOf<String?>(null)
+    var selected: String?
+        get() = picked
+        set(value) {
+            if (value != picked) editError = null
+            picked = value
+        }
+    private var picked by mutableStateOf<String?>(null)
+    /** Why the open editor's values were refused: shown in the editor, which stays open. */
+    var editError by mutableStateOf<String?>(null)
+        private set
     var showProblems by mutableStateOf(false)
     var showDatums by mutableStateOf(false)
     var showRemoved by mutableStateOf(false)
@@ -127,12 +157,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** What to tell the user about a failed core call, in the drawing's own words. */
+    private fun explain(e: DwException): String = e.text(doc)
+
     /** Run a core operation that answers with a drawing. */
-    private fun run(label: String, then: (Doc) -> Unit = {}, tracked: Boolean = false, op: () -> Doc) {
+    private fun run(label: String, then: (Doc) -> Unit = {}, tracked: Boolean = false, inEditor: Boolean = false, op: () -> Doc) {
         if (busy != null) return
         busy = label
         message = null
         messageUndo = false
+        editError = null
         viewModelScope.launch {
             // An open reports its stages: read them while the call waits.
             val watch = if (!tracked) null else launch {
@@ -153,12 +187,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: DwException.NothingToUndo) {
                 message = "Nothing to undo"
             } catch (e: DwException) {
+                if (inEditor && selected != null) {
+                    // The editor stays open with what was typed, and says why.
+                    editError = explain(e)
+                    return@launch
+                }
                 // A sheet would cover the snackbar: close it so the refusal is read.
                 selected = null
                 showProblems = false
                 showDatums = false
                 showRemoved = false
-                message = e.text()
+                message = explain(e)
             } finally {
                 watch?.cancel()
                 opening = null
@@ -230,7 +269,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 withContext(Dispatchers.IO) { removeEntry(id) }
             } catch (e: DwException) {
-                message = e.text()
+                message = explain(e)
             }
             refresh()
         }
@@ -300,7 +339,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 withContext(Dispatchers.IO) { setCredit(on) }
             } catch (e: DwException) {
-                message = e.text()
+                message = explain(e)
             }
             doc?.let { d -> run("Drawing the sheet…") { showSheet(d.sheet) } }
         }
@@ -312,7 +351,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 withContext(Dispatchers.IO) { setTitleDefaults(values) }
             } catch (e: DwException) {
-                message = e.text()
+                message = explain(e)
             }
         }
     }
@@ -363,10 +402,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         run("Applying…", then = { showProblems = false }) { answerProblem(problemKey, value) }
 
     fun edit(item: Item, tolerance: String, fit: String, prefix: String, suffix: String) =
-        run("Applying…", then = { selected = null }) { editItem(item, tolerance, fit, prefix, suffix) }
+        run("Applying…", then = { selected = null }, inEditor = true) { editItem(item, tolerance, fit, prefix, suffix) }
 
     fun titles(changes: List<TitleChange>) =
-        run("Applying…", then = { selected = null }) { setTitles(changes) }
+        run("Applying…", then = { selected = null }, inEditor = true) { setTitles(changes) }
 
     fun undo() = run("Undoing…") { coreUndo() }
 

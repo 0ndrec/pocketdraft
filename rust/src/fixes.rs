@@ -276,6 +276,53 @@ pub fn normalize_tolerance(value: &str) -> String {
     }
 }
 
+/// A tolerance typed in one length unit, written in another (`factor`: new units per old,
+/// 1/25.4 from millimetres to inches). The core prints a tolerance as typed, in the drawing's
+/// units, so ±0.1 typed on a millimetre drawing would read ±.100 in after the switch.
+///
+/// Each number becomes the shortest decimal within 2 % of the exact value: ±0.1 mm → ±0.004
+/// in, which comes back as ±0.1 mm. Words and signs (`±`, `+0.1 -0`) are kept as they are.
+pub fn convert_tolerance(value: &str, factor: f64) -> String {
+    let mut out = String::new();
+    let mut number = String::new();
+    let flush = |number: &mut String, out: &mut String| {
+        if number.is_empty() {
+            return;
+        }
+        match number.parse::<f64>() {
+            Ok(v) if number.chars().any(|c| c.is_ascii_digit()) => out.push_str(&shortest(v * factor)),
+            _ => out.push_str(number),
+        }
+        number.clear();
+    };
+    for c in value.chars() {
+        if c.is_ascii_digit() || c == '.' {
+            number.push(c);
+        } else {
+            flush(&mut number, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut number, &mut out);
+    out
+}
+
+/// The shortest decimal within 2 % of *v* (at most 6 places), without trailing zeros.
+fn shortest(v: f64) -> String {
+    if v == 0.0 {
+        return "0".into();
+    }
+    for places in 0..=6 {
+        let scale = 10f64.powi(places);
+        let r = (v * scale).round() / scale;
+        if r != 0.0 && ((r - v) / v).abs() <= 0.02 || places == 6 {
+            let s = format!("{r:.*}", places as usize);
+            return if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s };
+        }
+    }
+    unreachable!()
+}
+
 /// The values of an item's editor.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ItemValues {
@@ -442,6 +489,19 @@ mod tests {
         assert_eq!(normalize_tolerance("0,05"), "±0.05");
         assert_eq!(normalize_tolerance("+0.1  -0"), "+0.1 -0");
         assert_eq!(normalize_tolerance(""), "");
+    }
+
+    #[test]
+    fn tolerances_follow_the_units_and_come_back() {
+        let to_in = 1.0 / 25.4;
+        assert_eq!(convert_tolerance("±0.1", to_in), "±0.004");
+        assert_eq!(convert_tolerance("±0.004", 25.4), "±0.1");
+        assert_eq!(convert_tolerance("+0.1 -0", to_in), "+0.004 -0");
+        assert_eq!(convert_tolerance("±0.05", to_in), "±0.002");
+        assert_eq!(convert_tolerance("±0.002", 25.4), "±0.05");
+        assert_eq!(convert_tolerance("±.005", 25.4), "±0.127");
+        assert_eq!(convert_tolerance("±1", to_in), "±0.04");
+        assert_eq!(convert_tolerance("", to_in), "");
     }
 
     #[test]

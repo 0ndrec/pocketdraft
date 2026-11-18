@@ -911,6 +911,70 @@ pub fn set(path: &'static str, value: Value) -> Result<DocView, String> {
     })
 }
 
+/// The drawing's length units (`mm`, `in`), as one edit.
+///
+/// Tolerances the user typed are written in the new units ([`fixes::convert_tolerance`]):
+/// the core prints them as typed. The scale is chosen again for the new units, on the same
+/// paper (a paper the core chose is chosen again too): a scale kept from an inch drawing
+/// (4:1) is not one of the metric ones, and the core refuses it.
+pub fn set_units(units: String) -> Result<DocView, String> {
+    call(move |a| {
+        let session = a.session.as_mut().ok_or_else(|| no_session(&a.failed))?;
+        let from = session.0.plan().sheet.units;
+        let to = match units.as_str() {
+            "in" => draftwright::units::Units::In,
+            _ => draftwright::units::Units::Mm,
+        };
+        if from == to {
+            return view(a);
+        }
+        let set = |path: String, value: Value| Op { op: "set".into(), path, value: Some(value) };
+        let factor = from.millimetres() / to.millimetres();
+        let spec = session.0.spec();
+        let mut ops = vec![set("units".into(), Value::String(units))];
+        for (id, dim) in &spec.dimensions {
+            if let Some(t) = dim.tolerance.as_deref().filter(|t| !t.trim().is_empty()) {
+                let path = format!("dimensions/{}/tolerance", draftwright::items::key(id));
+                ops.push(set(path, Value::String(crate::fixes::convert_tolerance(t, factor))));
+            }
+        }
+        if let Some(t) = spec.envelope_tolerance.as_deref().filter(|t| !t.trim().is_empty()) {
+            ops.push(set("envelope_tolerance".into(), Value::String(crate::fixes::convert_tolerance(t, factor))));
+        }
+        let chosen = a.chosen.as_ref() == Some(&fixed(session));
+        if chosen {
+            ops.extend(paper_ops(None, false));
+        } else if spec.sheet.scale.is_some() {
+            ops.push(set("sheet/scale".into(), Value::Null));
+        }
+        if spec.sheet.keep_layout == Some(true) {
+            ops.push(Op { op: "remove".into(), path: "sheet/keep_layout".into(), value: None });
+        }
+        session.apply(&ops, true).map_err(err)?;
+        // The scale (and paper) chosen for the new units, fixed in the same edit when "Keep
+        // paper and scale" is on, as Automatic paper does.
+        let pin = keep_sheet_ops(session, &[]);
+        if !pin.is_empty() {
+            session.0.undo().map_err(err)?;
+            let mut all = ops.clone();
+            all.extend(pin);
+            match session.apply(&all, true) {
+                Ok(_) => {
+                    if chosen {
+                        a.chosen = Some(fixed(session));
+                    }
+                }
+                Err(e) => {
+                    note!("keep sheet: the scale for the new units not fixed ({})", e.message);
+                    session.apply(&ops, true).map_err(err)?;
+                }
+            }
+        }
+        a.edits += 1;
+        finish(a, "units")
+    })
+}
+
 /// Choose the paper: `None` lets the core choose. An exact paper is kept even when the
 /// drawing runs off it. Otherwise the paper is tried as it is and, when the drawing does not
 /// fit it legibly, set as the preferred one instead (`sheet/preferred_max_size`), from which
