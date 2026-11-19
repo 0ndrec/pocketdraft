@@ -338,8 +338,8 @@ dependencies = [
 
 [[package]]
 name = "draftwright"
-version = "0.6.0"
-source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.0#91cef5aa05c88e26570e076c8faec88a71e37057"
+version = "0.6.1"
+source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.1#07d528e257da600d9bd3a53985a4d8355c9d2881"
 dependencies = [
  "base64",
  "chrono",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "draftwright-ffi"
-version = "0.3.0-alpha.2"
+version = "0.3.0-alpha.3"
 dependencies = [
  "draftwright",
  "draftwright-wasm",
@@ -376,8 +376,8 @@ dependencies = [
 
 [[package]]
 name = "draftwright-wasm"
-version = "0.6.0"
-source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.0#91cef5aa05c88e26570e076c8faec88a71e37057"
+version = "0.6.1"
+source = "git+https://github.com/pzfreo/draftwright?tag=v0.6.1#07d528e257da600d9bd3a53985a4d8355c9d2881"
 dependencies = [
  "console_error_panic_hook",
  "draftwright",

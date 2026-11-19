@@ -178,8 +178,11 @@ can never reach a core that lacks the Spec key.
 
 ### draftwright 0.6 (branch `dev`)
 
-The `dev` branch builds on draftwright 0.6.0 (`https://github.com/pzfreo/draftwright`,
-the repository's new name), still unmodified. The move from alpha.3 to the release needed
+The `dev` branch builds on draftwright 0.6.1 (`https://github.com/pzfreo/draftwright`,
+the repository's new name), still unmodified. 0.6.1 needed no code change: it plans
+faster with identical plans, and gives a whole SVG sheet an opaque white `<rect>` before
+the layers (outside the `part` layer, so thumbnails keep only the outline, and with
+`pointer-events="none"`, so taps still reach the items). The move from alpha.3 to the release needed
 no code change. What the move to 0.6 took:
 
 - `core_features()` lists the ANSI and ARCH families, `"in"`, and `shaded: true`; the

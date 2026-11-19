@@ -1,0 +1,1 @@
+Built on draftwright 0.6.1: faster planning, and SVG sheets readable in dark viewers. Switching units converts typed tolerances and works with Keep paper and scale. DXF files keep the .dxf extension. An edit the drawing core refuses keeps the editor open and names the item in plain words.

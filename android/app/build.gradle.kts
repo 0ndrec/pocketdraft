@@ -26,9 +26,21 @@ android {
         applicationId = property("appId") as String
         minSdk = minApi
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.3.0-alpha.2"
+        versionCode = 5
+        versionName = "0.3.0-alpha.3"
         ndk { abiFilters += abi }
+    }
+
+    // A release key from the environment (the CI build, from the repository's secrets):
+    // POCKETDRAFT_KEYSTORE (a file), its password, the key's alias and password.
+    val keystore = System.getenv("POCKETDRAFT_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
+    if (keystore != null) {
+        signingConfigs.create("release") {
+            storeFile = file(keystore)
+            storePassword = System.getenv("POCKETDRAFT_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("POCKETDRAFT_KEY_ALIAS")
+            keyPassword = System.getenv("POCKETDRAFT_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -36,8 +48,12 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Unsigned by default, as F-Droid and a release key expect. `-PdebugSigned` signs
-            // with the debug key, for trying a release build on a device.
-            if (project.hasProperty("debugSigned")) signingConfig = signingConfigs.getByName("debug")
+            // with the debug key, for trying a release build on a device; a key in the
+            // environment (above) signs it in CI.
+            when {
+                project.hasProperty("debugSigned") -> signingConfig = signingConfigs.getByName("debug")
+                keystore != null -> signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
